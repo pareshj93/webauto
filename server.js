@@ -1,4 +1,4 @@
-// --- server.js (Final Version with Enhanced Logging) ---
+// --- server.js (Final Version with Enhanced Logging & Business Rules) ---
 require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
@@ -66,13 +66,49 @@ app.delete('/api/parties/:id', async (req, res) => { try { const [r]=await pool.
 app.get('/api/products', async(req,res)=>{ const {search, page = 1, limit = 10} = req.query; const pN=parseInt(page), lN=parseInt(limit), off=(pN-1)*lN; let wc=[], qP=[]; if(search){ const sT=`%${search.toLowerCase()}%`; wc.push('(LOWER(description) LIKE ? OR LOWER(hsnSac) LIKE ? OR LOWER(partNo) LIKE ?)'); qP.push(sT, sT, sT); } const wS=wc.length>0?`WHERE ${wc.join(' AND ')}`:''; try{ const [[{total}]] = await pool.query(`SELECT COUNT(*) as total FROM products ${wS}`, qP); const tPg = Math.ceil(total/lN); const [p] = await pool.query(`SELECT * FROM products ${wS} ORDER BY description ASC LIMIT ? OFFSET ?`, [...qP, lN, off]); sendResponse(res, 200, p, null, {currentPage: pN, totalPages: tPg, totalItems: total}); } catch(e) { console.error(e); sendResponse(res, 500, null, 'Failed to fetch products.'); } });
 app.post('/api/products',async(req,res)=>{
     console.log('--- API HIT: Creating Product ---', req.body);
-    const d=req.body; try { const[e]=await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?)',[d.description.trim()]); if(e.length>0) return sendResponse(res,409,null,'Product description already exists.'); const[r]=await pool.query('INSERT INTO products (description,hsnSac,unitPrice,gstRate,partNo) VALUES (?,?,?,?,?)',[d.description.trim(),d.hsnSac,d.unitPrice,d.gstRate,d.partNo || null]); sendResponse(res,201,{id:r.insertId,...d},'Product added.'); } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to add product.'); } });
+    const d=req.body;
+    try {
+        const description = d.description.trim();
+        const partNo = d.partNo ? d.partNo.trim() : null;
+        
+        const [descExists] = await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?)', [description]);
+        if (descExists.length > 0) {
+            return sendResponse(res, 409, null, 'A product with this description already exists.');
+        }
+        
+        if (partNo) {
+            const [partNoExists] = await pool.query('SELECT id FROM products WHERE partNo = ?', [partNo]);
+            if (partNoExists.length > 0) {
+                return sendResponse(res, 409, null, 'A product with this Part No. already exists.');
+            }
+        }
+        
+        const[r]=await pool.query('INSERT INTO products (description,hsnSac,unitPrice,gstRate,partNo) VALUES (?,?,?,?,?)',[description, d.hsnSac, d.unitPrice, d.gstRate, partNo]);
+        sendResponse(res,201,{id:r.insertId,...d},'Product added.');
+    } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to add product.'); }
+});
 app.put('/api/products/:id',async(req,res)=>{
     console.log(`--- API HIT: Updating Product ${req.params.id} ---`, req.body);
-    const d=req.body; const{id}=req.params; try { const[e]=await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?) AND id!=?',[d.description.trim(),id]); if(e.length > 0) return sendResponse(res,409,null,'Another product with this name already exists.'); const[r]=await pool.query('UPDATE products SET description=?,hsnSac=?,unitPrice=?,gstRate=?,partNo=? WHERE id=?',[d.description.trim(),d.hsnSac,d.unitPrice,d.gstRate,d.partNo || null,id]); if(r.affectedRows===0) return sendResponse(res,404,null,'Product not found.'); sendResponse(res,200,{id,...d},'Product updated.'); } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to update product.'); } });
+    const d=req.body; const{id}=req.params;
+    try {
+        const description = d.description.trim();
+        const partNo = d.partNo ? d.partNo.trim() : null;
+
+        const [descExists]=await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?) AND id!=?',[description, id]);
+        if(descExists.length > 0) return sendResponse(res,409,null,'Another product with this description already exists.');
+
+        if(partNo) {
+            const [partNoExists]=await pool.query('SELECT id FROM products WHERE partNo=? AND id!=?',[partNo, id]);
+            if(partNoExists.length > 0) return sendResponse(res,409,null,'Another product with this Part No. already exists.');
+        }
+
+        const[r]=await pool.query('UPDATE products SET description=?,hsnSac=?,unitPrice=?,gstRate=?,partNo=? WHERE id=?',[description, d.hsnSac, d.unitPrice, d.gstRate, partNo, id]);
+        if(r.affectedRows===0) return sendResponse(res,404,null,'Product not found.');
+        sendResponse(res,200,{id,...d},'Product updated.');
+    } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to update product.'); }
+});
 app.delete('/api/products/:id',async(req,res)=>{try{const[r]=await pool.query('DELETE FROM products WHERE id=?',[req.params.id]);if(r.affectedRows===0)return sendResponse(res,404,null,'Product not found.');sendResponse(res,204);}catch(e){console.error(e);sendResponse(res,500,null,'Failed to delete party.');}});
 
-// --- Helper function to add/update products from bill items ---
 async function upsertProductsFromBillItems(connection, items) {
     for (const item of items) {
         if (item.description && item.description.trim() !== '') {
@@ -80,11 +116,9 @@ async function upsertProductsFromBillItems(connection, items) {
             const [existing] = await connection.query('SELECT id FROM products WHERE LOWER(description) = ?', [trimmedDesc.toLowerCase()]);
             
             if (existing.length > 0) {
-                // Product exists, update it
                 await connection.query('UPDATE products SET hsnSac=?, unitPrice=?, gstRate=?, partNo=? WHERE id=?', 
                     [item.hsnSac, item.unitPrice, item.gstRate, item.partNo || null, existing[0].id]);
             } else {
-                // Product does not exist, insert it
                 await connection.query('INSERT INTO products (description, hsnSac, unitPrice, gstRate, partNo) VALUES (?, ?, ?, ?, ?)', 
                     [trimmedDesc, item.hsnSac, item.unitPrice, item.gstRate, item.partNo || null]);
             }
@@ -102,41 +136,16 @@ app.put('/api/bills/:id',async(req,res)=>{
     const bId=req.params.id;const d=req.body;let c;try{c=await pool.getConnection();await c.beginTransaction();const u=`UPDATE bills SET billNumber=?,date=?,reference=?,vehicleModelNo=?,sellerDetails=?,partyDetails=?,subTotal=?,totalCGST=?,totalSGST=?,roundOff=?,grandTotal=?,amountInWords=? WHERE id=?`;await c.query(u,[d.billNumber,d.date,d.reference,d.vehicleModelNo,JSON.stringify(d.sellerDetails),JSON.stringify(d.partyDetails),d.subTotal,d.totalCGST,d.totalSGST,d.roundOff,d.grandTotal,d.amountInWords,bId]);await c.query('DELETE FROM bill_items WHERE bill_id=?',[bId]);if(d.items.length>0){ const iS=`INSERT INTO bill_items(bill_id,description,hsnSac,quantity,unitPrice,gstRate,taxableValue,cgstAmount,sgstAmount,totalAmount,removeRefitting,dentingAcGas,painting,partNo)VALUES ?`; const iV=d.items.map(i=>[bId,i.description,i.hsnSac,i.quantity,i.unitPrice,i.gstRate,i.taxableValue,i.cgstAmount,i.sgstAmount,i.totalAmount,i.removeRefitting,i.dentingAcGas,i.painting,i.partNo || null]);await c.query(iS,[iV]);} await upsertProductsFromBillItems(c, d.items); await c.commit();sendResponse(res,200,{id:bId,...d},'Bill updated.');}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to update bill: ${e.message}`);}finally{if(c)c.release();}});
 app.delete('/api/bills/:id',async(req,res)=>{let c;try{c=await pool.getConnection();await c.beginTransaction();await c.query('DELETE FROM bill_items WHERE bill_id=?',[req.params.id]);const[r]=await c.query('DELETE FROM bills WHERE id=?',[req.params.id]);if(r.affectedRows===0)return sendResponse(res,404,null,'Bill not found.');await c.commit();sendResponse(res,204);}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to delete bill: ${e.message}`);}finally{if(c)c.release();}});
 
-// ===================================================================================
-// =================== PDF GENERATION ENGINE (REVISED) ===============================
-// ===================================================================================
-
 const PDF_SETTINGS = {
     MARGIN: { TOP: 25, BOTTOM: 25, LEFT: 35, RIGHT: 35 },
     FONT: { NORMAL: 'Helvetica', BOLD: 'Helvetica-Bold' },
-    COLOR: { 
-        HEADER_TEXT: '#000000', 
-        INVOICE_TITLE: '#000000', 
-        SECTION_TITLE: '#34495E', 
-        TABLE_HEADER_BG: '#4A90E2', 
-        TABLE_HEADER_TEXT: '#FFFFFF', 
-        ROW_ALT_BG: '#F0F6FF', 
-        TEXT_DARK: '#212529', 
-        TEXT_MEDIUM: '#495057', 
-        BORDER_DARK: '#000000', 
-        BORDER_LIGHT: '#CCCCCC', 
-        ACCENT: '#4A90E2', 
-        GRAND_TOTAL_BG: '#EAF2F8' 
-    },
-    LOGO: {
-        MAX_WIDTH: 240,
-        MAX_HEIGHT: 100
-    }
+    COLOR: { HEADER_TEXT: '#000000', INVOICE_TITLE: '#000000', SECTION_TITLE: '#34495E', TABLE_HEADER_BG: '#4A90E2', TABLE_HEADER_TEXT: '#FFFFFF', ROW_ALT_BG: '#F0F6FF', TEXT_DARK: '#212529', TEXT_MEDIUM: '#495057', BORDER_DARK: '#000000', BORDER_LIGHT: '#CCCCCC', ACCENT: '#4A90E2', GRAND_TOTAL_BG: '#EAF2F8' },
+    LOGO: { MAX_WIDTH: 240, MAX_HEIGHT: 100 }
 };
 
 async function generateBillPdfBuffer(billDetails, logoBuffer) {
     return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({
-            size: 'A4',
-            margins: PDF_SETTINGS.MARGIN,
-            bufferPages: true,
-        });
-
+        const doc = new PDFDocument({ size: 'A4', margins: PDF_SETTINGS.MARGIN, bufferPages: true });
         const buffers = [];
         doc.on('data', chunk => buffers.push(chunk));
         doc.on('end', () => resolve(Buffer.concat(buffers)));
@@ -145,21 +154,12 @@ async function generateBillPdfBuffer(billDetails, logoBuffer) {
         try {
             const context = { y: doc.page.margins.top };
             const isSinglePageLayout = (billDetails.items || []).length <= 12;
-
-            doc.on('pageAdded', () => {
-                context.y = doc.page.margins.top;
-                drawHeader(doc, context, billDetails, null, false);
-            });
+            doc.on('pageAdded', () => { context.y = doc.page.margins.top; drawHeader(doc, context, billDetails, null, false); });
             
             drawHeader(doc, context, billDetails, logoBuffer, true);
             drawBillPartyAndMetaInfo(doc, context, billDetails);
             
-            const layoutOptions = {
-                isSinglePage: isSinglePageLayout,
-                fontSize: isSinglePageLayout ? 7.8 : 9,
-                rowPadding: isSinglePageLayout ? 3 : 5
-            };
-
+            const layoutOptions = { isSinglePage: isSinglePageLayout, fontSize: isSinglePageLayout ? 7.8 : 9, rowPadding: isSinglePageLayout ? 3 : 5 };
             const itemTableConfig = getItemTableConfig(doc, billDetails, layoutOptions);
             drawItemTable(doc, context, itemTableConfig, layoutOptions);
 
@@ -168,20 +168,14 @@ async function generateBillPdfBuffer(billDetails, logoBuffer) {
             const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig, layoutOptions) : 0;
             const summaryHeight = totalsHeight + hsnHeight; 
             
-            if (!isSinglePageLayout) {
-                 checkAndHandlePageBreak(doc, context, summaryHeight);
-            }
+            if (!isSinglePageLayout) checkAndHandlePageBreak(doc, context, summaryHeight);
             
             drawTotalsSection(doc, context, billDetails, layoutOptions);
             if (hsnConfig) drawHsnSummary(doc, context, hsnConfig, layoutOptions);
             
             finalizePages(doc, billDetails);
-            
             doc.end();
-        } catch (e) {
-            console.error("[PDF Generation Error]", e.stack);
-            reject(e);
-        }
+        } catch (e) { console.error("[PDF Generation Error]", e.stack); reject(e); }
     });
 }
 
@@ -191,11 +185,7 @@ function drawHeader(doc, context, billDetails, logoBuffer, isFirstPage) {
 
     if (isFirstPage) {
         context.y += 15;
-        doc.font(FONT.BOLD).fontSize(18).fillColor(COLOR.INVOICE_TITLE)
-           .text('TAX INVOICE', MARGIN.LEFT, context.y, {
-               width: doc.page.width - MARGIN.LEFT - MARGIN.RIGHT,
-               align: 'center'
-           });
+        doc.font(FONT.BOLD).fontSize(18).fillColor(COLOR.INVOICE_TITLE).text('TAX INVOICE', MARGIN.LEFT, context.y, { width: doc.page.width - MARGIN.LEFT - MARGIN.RIGHT, align: 'center' });
         context.y = doc.y + 15;
 
         const headerStartY = context.y;
@@ -203,13 +193,7 @@ function drawHeader(doc, context, billDetails, logoBuffer, isFirstPage) {
         const companyDetailsX = logoX + LOGO.MAX_WIDTH + 20;
 
         let logoHeight = 0;
-        if (logoBuffer) {
-            doc.image(logoBuffer, logoX, headerStartY, {
-                fit: [LOGO.MAX_WIDTH, LOGO.MAX_HEIGHT],
-                align: 'left', valign: 'top'
-            });
-            logoHeight = LOGO.MAX_HEIGHT;
-        }
+        if (logoBuffer) { doc.image(logoBuffer, logoX, headerStartY, { fit: [LOGO.MAX_WIDTH, LOGO.MAX_HEIGHT], align: 'left', valign: 'top' }); logoHeight = LOGO.MAX_HEIGHT; }
 
         let tempY = headerStartY;
         const dryRunDoc = doc;
@@ -217,30 +201,20 @@ function drawHeader(doc, context, billDetails, logoBuffer, isFirstPage) {
         tempY += dryRunDoc.heightOfString(sellerDetails.name || "", { width: doc.page.width - companyDetailsX - MARGIN.RIGHT }) + 5;
         dryRunDoc.font(FONT.NORMAL).fontSize(9);
         tempY += dryRunDoc.heightOfString(sellerDetails.address || "", { width: doc.page.width - companyDetailsX - MARGIN.RIGHT }) + 5;
-        if (sellerDetails.gstin) {
-            tempY += dryRunDoc.heightOfString(`GSTIN/UIN: ${sellerDetails.gstin}`, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
-        }
+        if (sellerDetails.gstin) tempY += dryRunDoc.heightOfString(`GSTIN/UIN: ${sellerDetails.gstin}`, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
         const textBlockHeight = tempY - headerStartY;
 
         const companyDetailsY = headerStartY + (logoHeight / 2) - (textBlockHeight / 2);
         let currentY = companyDetailsY > headerStartY ? companyDetailsY : headerStartY;
 
-        doc.font(FONT.BOLD).fontSize(14).fillColor(COLOR.HEADER_TEXT)
-           .text(sellerDetails.name || "", companyDetailsX, currentY, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
+        doc.font(FONT.BOLD).fontSize(14).fillColor(COLOR.HEADER_TEXT).text(sellerDetails.name || "", companyDetailsX, currentY, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
         doc.font(FONT.NORMAL).fontSize(9).fillColor(COLOR.TEXT_MEDIUM);
         doc.text(sellerDetails.address || "", companyDetailsX, doc.y + 5, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
-        if (sellerDetails.gstin) {
-            doc.text(`GSTIN/UIN: ${sellerDetails.gstin}`, companyDetailsX, doc.y + 5, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
-        }
+        if (sellerDetails.gstin) doc.text(`GSTIN/UIN: ${sellerDetails.gstin}`, companyDetailsX, doc.y + 5, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
 
         context.y = headerStartY + Math.max(logoHeight, textBlockHeight) + 25;
-
     } else {
-        doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_MEDIUM)
-           .text(`Invoice Continued: ${billDetails.billNumber}`, MARGIN.LEFT, context.y, {
-               width: doc.page.width - MARGIN.LEFT - MARGIN.RIGHT,
-               align: 'center'
-           });
+        doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_MEDIUM).text(`Invoice Continued: ${billDetails.billNumber}`, MARGIN.LEFT, context.y, { width: doc.page.width - MARGIN.LEFT - MARGIN.RIGHT, align: 'center' });
         context.y = doc.y + 20;
     }
 }
@@ -251,8 +225,7 @@ function drawBillPartyAndMetaInfo(doc, context, billDetails) {
     const rightColumnX = doc.page.width / 2 + 20;
 
     let leftY = sectionStartY;
-    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(10).fillColor(PDF_SETTINGS.COLOR.SECTION_TITLE)
-       .text('Buyer (Bill to)', PDF_SETTINGS.MARGIN.LEFT, leftY);
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(10).fillColor(PDF_SETTINGS.COLOR.SECTION_TITLE).text('Buyer (Bill to)', PDF_SETTINGS.MARGIN.LEFT, leftY);
     leftY += 15;
 
     doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM);
@@ -275,10 +248,8 @@ function drawBillPartyAndMetaInfo(doc, context, billDetails) {
     
     metaData.forEach(row => {
         if (!row.value) return; 
-        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK)
-           .text(row.label, rightColumnX, rightY, { width: labelWidth, align: 'left' });
-        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM)
-           .text(`: ${row.value}`, rightColumnX + labelWidth, rightY, { width: valueWidth, align: 'left' });
+        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK).text(row.label, rightColumnX, rightY, { width: labelWidth, align: 'left' });
+        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM).text(`: ${row.value}`, rightColumnX + labelWidth, rightY, { width: valueWidth, align: 'left' });
         rightY += 15;
     });
     const rightColumnBottom = rightY;
@@ -286,54 +257,30 @@ function drawBillPartyAndMetaInfo(doc, context, billDetails) {
     context.y = Math.max(leftColumnBottom, rightColumnBottom) + 25;
 }
 
-function drawPageBorder(doc) {
-    const {left, top, right, bottom} = doc.page.margins;
-    doc.rect(left, top, doc.page.width - left - right, doc.page.height - top - bottom)
-       .stroke(PDF_SETTINGS.COLOR.BORDER_DARK);
-}
-
-function drawPageNumber(doc, currentPage, totalPages) {
-    const { MARGIN, FONT } = PDF_SETTINGS;
-    doc.font(FONT.NORMAL).fontSize(8).fillColor("#777")
-       .text(`Page ${currentPage} of ${totalPages}`, 
-             MARGIN.LEFT, 
-             doc.page.height - MARGIN.BOTTOM + 10, 
-             { align: 'center' });
-}
+function drawPageBorder(doc) { const {left, top, right, bottom} = doc.page.margins; doc.rect(left, top, doc.page.width - left - right, doc.page.height - top - bottom).stroke(PDF_SETTINGS.COLOR.BORDER_DARK); }
+function drawPageNumber(doc, currentPage, totalPages) { doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(8).fillColor("#777").text(`Page ${currentPage} of ${totalPages}`, PDF_SETTINGS.MARGIN.LEFT, doc.page.height - PDF_SETTINGS.MARGIN.BOTTOM + 10, { align: 'center' }); }
 
 function drawFooterContent(doc, billDetails) {
     const { sellerDetails } = billDetails;
     const { MARGIN, FONT, COLOR } = PDF_SETTINGS;
-
     const pageBottom = doc.page.height - MARGIN.BOTTOM;
     const footerStartY = pageBottom - 100;
-
     const signatureX = doc.page.width - MARGIN.RIGHT - 180;
-    doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_DARK)
-       .text(`For ${sellerDetails.name || ''}`, signatureX, footerStartY + 45, { width: 180, align: 'center' });
-    doc.font(FONT.NORMAL).fontSize(8).fillColor(COLOR.TEXT_MEDIUM)
-       .text('Authorised Signatory', signatureX, footerStartY + 75, { width: 180, align: 'center' });
-
+    doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_DARK).text(`For ${sellerDetails.name || ''}`, signatureX, footerStartY + 45, { width: 180, align: 'center' });
+    doc.font(FONT.NORMAL).fontSize(8).fillColor(COLOR.TEXT_MEDIUM).text('Authorised Signatory', signatureX, footerStartY + 75, { width: 180, align: 'center' });
     const leftColumnX = MARGIN.LEFT;
     const leftColumnWidth = doc.page.width - MARGIN.LEFT - MARGIN.RIGHT - 200;
-
     const { bankName, accountNo, ifsc } = sellerDetails;
     if (bankName || accountNo || ifsc) {
-        doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_DARK)
-           .text('Bank Details', leftColumnX, footerStartY, { width: leftColumnWidth });
-        
+        doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_DARK).text('Bank Details', leftColumnX, footerStartY, { width: leftColumnWidth });
         doc.font(FONT.NORMAL).fontSize(8).fillColor(COLOR.TEXT_MEDIUM);
         if (bankName) doc.text(`Bank Name: ${bankName}`, { width: leftColumnWidth });
         if (accountNo) doc.text(`A/c No.: ${accountNo}`, { width: leftColumnWidth });
         if (ifsc) doc.text(`IFSC Code: ${ifsc}`, { width: leftColumnWidth });
         doc.moveDown(1);
     }
-
-    doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_DARK)
-        .text('Terms & Conditions', leftColumnX, doc.y, { width: leftColumnWidth });
-    doc.font(FONT.NORMAL).fontSize(8).fillColor(COLOR.TEXT_MEDIUM)
-       .text('1. Goods once sold will not be taken back. 2. Interest @18% p.a. will be charged on overdue bills. 3. Subject to local jurisdiction.',
-             leftColumnX, doc.y, { width: leftColumnWidth });
+    doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_DARK).text('Terms & Conditions', leftColumnX, doc.y, { width: leftColumnWidth });
+    doc.font(FONT.NORMAL).fontSize(8).fillColor(COLOR.TEXT_MEDIUM).text('1. Goods once sold will not be taken back. 2. Interest @18% p.a. will be charged on overdue bills. 3. Subject to local jurisdiction.', leftColumnX, doc.y, { width: leftColumnWidth });
 }
 
 function finalizePages(doc, billDetails) {
@@ -341,16 +288,14 @@ function finalizePages(doc, billDetails) {
     for (let i = 0; i < totalPages; i++) {
         doc.switchToPage(i);
         drawPageBorder(doc);
-        if (i === totalPages - 1) {
-            drawFooterContent(doc, billDetails);
-        }
+        if (i === totalPages - 1) drawFooterContent(doc, billDetails);
         drawPageNumber(doc, i + 1, totalPages);
     }
 }
 
 function checkAndHandlePageBreak(doc, context, neededHeight) {
     const pageBottom = doc.page.height - doc.page.margins.bottom;
-    const footerHeight = 150; // Reserve space for footer
+    const footerHeight = 150; 
     if (context.y + neededHeight > pageBottom - footerHeight) {
         doc.addPage();
         return true;
@@ -364,17 +309,12 @@ function drawItemTable(doc, context, config, options) {
     const headerHeight = 25;
 
     const drawTableHeader = () => {
-        doc.rect(PDF_SETTINGS.MARGIN.LEFT, context.y, tableWidth, headerHeight)
-           .fill(PDF_SETTINGS.COLOR.TABLE_HEADER_BG);
+        doc.rect(PDF_SETTINGS.MARGIN.LEFT, context.y, tableWidth, headerHeight).fill(PDF_SETTINGS.COLOR.TABLE_HEADER_BG);
         let currentX = PDF_SETTINGS.MARGIN.LEFT;
         doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TABLE_HEADER_TEXT);
         headers.forEach((header, i) => {
             doc.text(header.text, currentX + 5, context.y + 8, { width: colWidths[i] - 10, align: header.align || 'left' });
-            if (i < headers.length - 1) {
-                doc.moveTo(currentX + colWidths[i], context.y)
-                   .lineTo(currentX + colWidths[i], context.y + headerHeight)
-                   .strokeColor('#FFFFFF').lineWidth(0.5).stroke();
-            }
+            if (i < headers.length - 1) doc.moveTo(currentX + colWidths[i], context.y).lineTo(currentX + colWidths[i], context.y + headerHeight).strokeColor('#FFFFFF').lineWidth(0.5).stroke();
             currentX += colWidths[i];
         });
         context.y += headerHeight;
@@ -384,28 +324,17 @@ function drawItemTable(doc, context, config, options) {
 
     rows.forEach((rowData, index) => {
         const rowHeight = Math.max(18, doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize).heightOfString(String(rowData.values[0]), { width: colWidths[0] - 10}) + (rowPadding * 2));
-        
-        if (!isSinglePage && checkAndHandlePageBreak(doc, context, rowHeight)) {
-            drawTableHeader();
-        }
-
+        if (!isSinglePage && checkAndHandlePageBreak(doc, context, rowHeight)) drawTableHeader();
         const rowY = context.y;
-        if (index % 2) { 
-            doc.rect(PDF_SETTINGS.MARGIN.LEFT, rowY, tableWidth, rowHeight).fill(PDF_SETTINGS.COLOR.ROW_ALT_BG);
-        }
-        
+        if (index % 2) doc.rect(PDF_SETTINGS.MARGIN.LEFT, rowY, tableWidth, rowHeight).fill(PDF_SETTINGS.COLOR.ROW_ALT_BG);
         let currentX = PDF_SETTINGS.MARGIN.LEFT;
-        
         rowData.values.forEach((cell, i) => {
             const currentFontSize = headers[i].key === 'partNo' ? fontSize - 1 : fontSize;
             doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(currentFontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
             doc.text(String(cell || ''), currentX + rowPadding, rowY + rowPadding, { width: colWidths[i] - (rowPadding * 2), align: headers[i].align || 'left' });
             currentX += colWidths[i];
         });
-
-        doc.moveTo(PDF_SETTINGS.MARGIN.LEFT, context.y + rowHeight)
-           .lineTo(PDF_SETTINGS.MARGIN.LEFT + tableWidth, context.y + rowHeight)
-           .strokeColor(PDF_SETTINGS.COLOR.BORDER_LIGHT).lineWidth(0.5).stroke();
+        doc.moveTo(PDF_SETTINGS.MARGIN.LEFT, context.y + rowHeight).lineTo(PDF_SETTINGS.MARGIN.LEFT + tableWidth, context.y + rowHeight).strokeColor(PDF_SETTINGS.COLOR.BORDER_LIGHT).lineWidth(0.5).stroke();
         context.y += rowHeight;
     });
     context.y += 10;
@@ -416,8 +345,8 @@ function getTableHeight(doc, config, options) {
     let height = 0;
     const { fontSize, rowPadding } = options;
 
-    if (config.title) height += 35; // Title height
-    height += config.isComplexHeader ? 35 : 25; // Header height
+    if (config.title) height += 35; 
+    height += config.isComplexHeader ? 35 : 25; 
     
     doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize);
     config.rows.forEach(row => {
@@ -426,7 +355,7 @@ function getTableHeight(doc, config, options) {
         height += Math.max(18, textHeight + (rowPadding * 2));
     });
 
-    if (config.footer) height += 25; // Footer height
+    if (config.footer) height += 25;
     return height;
 }
 
@@ -446,19 +375,17 @@ function getItemTableConfig(doc, billDetails, options) {
     const tableWidth = doc.page.width - PDF_SETTINGS.MARGIN.LEFT - PDF_SETTINGS.MARGIN.RIGHT;
     const colWidths = headers.map(h => h.widthRatio * tableWidth);
     
-    const rows = billDetails.items.map((item, index) => {
-        return {
-            values: [
-                `${index + 1}. ${item.description || ''}`,
-                item.partNo || '',
-                item.hsnSac || '',
-                item.quantity || '0',
-                Number(item.unitPrice || 0).toFixed(2),
-                item.gstRate ? `${item.gstRate}%` : '0%',
-                Number(item.taxableValue || 0).toFixed(2)
-            ]
-        }
-    });
+    const rows = billDetails.items.map((item, index) => ({
+        values: [
+            `${index + 1}. ${item.description || ''}`,
+            item.partNo || '-',
+            item.hsnSac || '-',
+            item.quantity || '0',
+            Number(item.unitPrice || 0).toFixed(2),
+            item.gstRate ? `${item.gstRate}%` : '0%',
+            Number(item.taxableValue || 0).toFixed(2)
+        ]
+    }));
     
     return { headers, rows, colWidths, tableWidth };
 }
