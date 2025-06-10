@@ -31,17 +31,6 @@
             box-sizing: border-box;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
-
-        @media print {
-            body { margin: 0; padding: 0; background-color: #fff; }
-            body * { visibility: hidden !important; }
-            #billPreviewAreaContainer, #billPreviewAreaContainer *, #billPreviewArea, #billPreviewArea * { visibility: visible !important; }
-            #billPreviewAreaContainer { position: static !important; margin: 0 !important; padding: 0 !important; width: 100% !important; height: auto !important; overflow: visible !important; }
-            #billPreviewArea { position: static !important; display: block !important; width: 100% !important; height: auto !important; min-height: initial !important; margin: 0 !important; padding: 5mm !important; border: none !important; box-shadow: none !important; box-sizing: border-box !important; overflow: visible !important; }
-            .no-print { display: none !important; }
-            header, .bottom-nav, main.p-4 > *:not(#viewBillView), #viewBillView > *:not(#billPreviewAreaContainer) { display: none !important; }
-             #viewBillView { visibility: visible !important; display: block !important; width: 100% !important; height: auto !important; padding: 0 !important; margin: 0 !important; }
-        }
         
         .bill-preview-area table { width: 100%; border-collapse: collapse; margin-bottom: 5px; }
         .bill-preview-area th, .bill-preview-area td { border: 1px solid #333; padding: 2px 3px; text-align: left; vertical-align: top; font-size: 7.5px; } 
@@ -60,6 +49,22 @@
         .spinner { border: 4px solid rgba(0, 0, 0, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #4f46e5; animation: spin 1s ease infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .pagination-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        @media print {
+            body, html { margin: 0; padding: 0; background-color: #fff; }
+            .no-print { display: none !important; }
+            body > *:not(#appContainer) { display: none !important; }
+            #appContainer { all: initial !important; }
+            main, #viewBillView, #billPreviewAreaContainer, #billPreviewArea { all: initial !important; display: block !important; }
+             #billPreviewAreaContainer * {
+                visibility: visible !important;
+            }
+             #billPreviewArea {
+                font-family: 'Arial', 'Helvetica', sans-serif !important; 
+                font-size: 8px !important; 
+                color: #000 !important;
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -172,7 +177,7 @@
                             <div><label for="billPartyName" class="block text-sm font-medium">Party Name</label><input type="text" id="billPartyName" class="mt-1 block w-full p-2" required></div>
                             <div><label for="billPartyEmail" class="block text-sm font-medium">Party Email</label><input type="email" id="billPartyEmail" class="mt-1 block w-full p-2"></div>
                             <div><label for="billPartyAddress" class="block text-sm font-medium">Party Address</label><textarea id="billPartyAddress" rows="2" class="mt-1 block w-full p-2"></textarea></div>
-                            <div><label for="billPartyGstin" class="block text-sm font-medium">Party GSTIN</label><input type="text" id="billPartyGstin" class="mt-1 block w-full p-2"></div>
+                            <div><label for="billPartyGstin" class="block text-sm font-medium">Party GSTIN</label><input type="text" id="billPartyGstin" class="mt-1 block w-full rounded-md border-gray-300 p-2"></div>
                             <div class="mt-2 flex items-center"><input type="checkbox" id="savePartyDetails" class="h-4 w-4"><label for="savePartyDetails" class="ml-2 text-sm">Save/Update Party Details</label></div>
                         </div>
                     </div>
@@ -182,7 +187,8 @@
                         <div id="billItemsContainer" class="space-y-3"></div>
                         <div class="mt-4 flex flex-wrap gap-2">
                             <button type="button" onclick="App.addLaborItem('Remove & Refitting')" class="bg-cyan-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-wrench mr-1"></i> Add R/R</button>
-                            <button type="button" onclick="App.addLaborItem('Denting & Painting')" class="bg-orange-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-paint-roller mr-1"></i> Add Dent/Paint</button>
+                            <button type="button" onclick="App.addLaborItem('Denting')" class="bg-orange-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-hammer mr-1"></i> Add Denting</button>
+                            <button type="button" onclick="App.addLaborItem('Painting')" class="bg-red-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-paint-roller mr-1"></i> Add Painting</button>
                             <button type="button" onclick="App.addLaborItem('Other Labour')" class="bg-sky-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-tools mr-1"></i> Add Labour</button>
                             <button type="button" onclick="App.addBillItem()" class="bg-blue-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-plus mr-1"></i> Add Item</button>
                             <button type="button" onclick="App.showAddProductFromSavedModal()" class="bg-teal-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-archive mr-1"></i> Add From Saved</button>
@@ -232,7 +238,7 @@
     <div id="addProductFromSavedModal" class="modal no-print"><div class="modal-content"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Select Product</h3><span class="close-button" onclick="App.closeAddProductFromSavedModal()">&times;</span></div><div class="mb-3"><input type="search" id="modalProductSearchInput" placeholder="Search saved products..." class="w-full p-2 border"></div><div id="savedProductsSelectionList" class="max-h-60 overflow-y-auto border p-2"></div><div id="modalProductPaginationControls" class="mt-3 flex justify-between items-center"></div><button onclick="App.closeAddProductFromSavedModal()" class="mt-4 bg-gray-500 text-white font-bold py-2 px-4 rounded-md w-full shadow">Close</button></div></div>
 
     <script type="module">
-        const API_BASE_URL = 'https://webautofinal.onrender.com/api';
+        const API_BASE_URL = 'https://webautofinal.onrender.com';
 
         let currentView = 'dashboardView';
         let sellerSettings = null;
@@ -249,8 +255,11 @@
         async function apiRequest(endpoint, method = 'GET', body = null) {
             const options = { method, headers: { 'Content-Type': 'application/json' } };
             if (body) options.body = JSON.stringify(body);
+            
+            const fullUrl = `${API_BASE_URL}/api${endpoint}`;
+
             try {
-                const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+                const response = await fetch(fullUrl, options);
                 if (response.status === 204) return { success: true, data: null, message: "Operation successful (No Content)" };
                 
                 let responseData;
@@ -268,7 +277,7 @@
                 if (!response.ok) throw new Error(responseData.message || responseText || `HTTP error! status: ${response.status}`);
                 return responseData;
             } catch (error) {
-                console.error(`API request to ${method} ${API_BASE_URL}${endpoint} failed:`, error);
+                console.error(`API request to ${method} ${fullUrl} failed:`, error);
                 App.showMessage(`Error: ${error.message}. Check API connection and server logs.`, true);
                 throw error;
             }
@@ -298,7 +307,7 @@
                 const password = document.getElementById('password').value;
                 const errorEl = document.getElementById('loginError');
 
-                // NOTE: Replace this with a real API call for authentication
+                // NOTE: This is a simple front-end check. Real security requires a backend authentication endpoint.
                 if (username === 'admin' && password === 'admin') {
                     document.getElementById('loginView').style.display = 'none';
                     document.getElementById('appContainer').style.display = 'block';
@@ -552,7 +561,7 @@
                     <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-start">
                         <div class="md:col-span-3"><label class="text-xs font-medium">Description</label><input type="text" name="itemDescription" class="mt-1 w-full p-1 border text-sm" value="${itemData.description || ''}" required></div>
                         <div class="md:col-span-2"><label class="text-xs font-medium">Part No.</label><input type="text" name="itemPartNo" class="mt-1 w-full p-1 border text-sm" value="${itemData.partNo || ''}"></div>
-                        <div class="md:col-span-2"><label class="text-xs font-medium">HSN/SAC</label><input type="text" name="itemHsnSac" class="mt-1 w-full p-1 border text-sm" value="${itemData.hsnSac || ''}"></div>
+                        <div class="md:col-span-2"><label class="text-xs font-medium">HSN/SAC</label><input type="text" name="itemHsnSac" class="mt-1 block w-full p-1 border text-sm" value="${itemData.hsnSac || ''}"></div>
                         <div class="md:col-span-1"><label class="text-xs font-medium">Qty</label><input type="number" name="itemQuantity" step="any" class="mt-1 w-full p-1 border text-sm" value="${itemData.quantity || 1}" ${isLabour ? 'readonly' : ''}></div>
                         <div class="md:col-span-2"><label class="text-xs font-medium">${isLabour ? 'Amount' : 'Unit Price'}</label><input type="number" name="itemUnitPrice" step="0.01" class="mt-1 w-full p-1 border text-sm" value="${itemData.unitPrice || ''}" required></div>
                         <div class="md:col-span-1"><label class="text-xs font-medium">GST%</label><input type="number" name="itemGstRate" step="any" class="mt-1 w-full p-1 border text-sm" value="${itemData.gstRate !== undefined ? itemData.gstRate : ''}" required></div>
@@ -608,7 +617,6 @@
                             quantity: qty, unitPrice: unitP, gstRate: gst, 
                             taxableValue: taxVal, cgstAmount: cgstAmt, sgstAmount: sgstAmt, 
                             totalAmount: taxVal + cgstAmt + sgstAmt,
-                            // Legacy labor fields for backend compatibility
                             removeRefitting: 0, dentingAcGas: 0, painting: 0 
                         });
                         calcSub += taxVal; calcCgst += cgstAmt; calcSgst += sgstAmt;
@@ -704,6 +712,11 @@
                             <td class="text-right">${Number(item.taxableValue || 0).toFixed(2)}</td>
                         </tr>`;
                 });
+                
+                let partyAddressHtml = '';
+                if (partyDetails.address && partyDetails.address.trim() !== '') {
+                    partyAddressHtml = `Address: ${partyDetails.address.replace(/\n/g, '<br>')}<br>`;
+                }
 
                 previewArea.innerHTML = `
                     <div class="header-company-name">${sellerDetails.name || ''}</div>
@@ -711,10 +724,10 @@
                     <div class="header-gstin">GSTIN/UIN: ${sellerDetails.gstin || ''}</div>
                     <div class="tax-invoice-title">TAX INVOICE</div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 8px;">
-                        <div style="width: 60%;">
+                        <div class="party-details-preview" style="width: 60%;">
                             <strong>Bill To:</strong><br>
                             M/s: ${partyDetails.name || ''}<br>
-                            ${partyDetails.address ? `Address: ${partyDetails.address.replace(/\n/g, '<br>')}<br>` : ''}
+                            ${partyAddressHtml}
                             ${partyDetails.gstin ? `<strong>GSTIN/UIN: ${partyDetails.gstin}</strong>` : ''}
                         </div>
                         <div style="width: 38%;">
@@ -727,7 +740,7 @@
                         </div>
                     </div>
                     <table class="item-table">
-                        <thead><tr><th style="width:3%">Sr.</th><th style="width:40%">Particulars</th><th>HSN/SAC</th><th style="width:5%">Qty</th><th style="width:10%">Rate</th><th style="width:8%">GST%</th><th style="width:12%">Amount</th></tr></thead>
+                        <thead><tr><th style="width:3%">Sr.</th><th style="width:30%">Particulars</th><th style="width:15%">Part No.</th><th>HSN/SAC</th><th style="width:5%">Qty</th><th style="width:10%">Rate</th><th style="width:8%">GST%</th><th style="width:12%">Amount</th></tr></thead>
                         <tbody>${itemsHtml}</tbody>
                     </table>
                     <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 8px;">
@@ -752,7 +765,7 @@
                 if (!currentPreviewBillData || !currentPreviewBillData.id) { App.showMessage("No bill selected.", true); App.hideLoading(); return; }
                 const billId = currentPreviewBillData.id;
                 try {
-                    const response = await fetch(`${API_BASE_URL}/bills/${billId}/download-pdf`);
+                    const response = await fetch(`${API_BASE_URL}/api/bills/${billId}/download-pdf`);
                     if (!response.ok) {
                         const errorText = await response.text(); 
                         throw new Error(`Server error: ${response.status} - ${errorText || response.statusText}`);
