@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bill Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; overscroll-behavior-y: contain; }
+        .app-container { max-width: 900px; margin: 0 auto; min-height: 100vh; }
+        .view { display: none; }
+        .view.active { display: block; }
+        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000; }
+
+        .bill-preview-area {
+            font-family: 'Arial', 'Helvetica', sans-serif; 
+            font-size: 8px; 
+            line-height: 1.3;
+            color: #000;
+            background-color: #fff;
+            padding: 10mm;
+            border: 1px solid #ccc;
+            margin: 10px auto;
+            width: 210mm; 
+            min-height: 297mm; 
+            box-sizing: border-box;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        @media print {
+            body { margin: 0; padding: 0; background-color: #fff; }
+            body * { visibility: hidden !important; }
+            #billPreviewAreaContainer, #billPreviewAreaContainer *, #billPreviewArea, #billPreviewArea * { visibility: visible !important; }
+            #billPreviewAreaContainer { position: static !important; margin: 0 !important; padding: 0 !important; width: 100% !important; height: auto !important; overflow: visible !important; }
+            #billPreviewArea { position: static !important; display: block !important; width: 100% !important; height: auto !important; min-height: initial !important; margin: 0 !important; padding: 5mm !important; border: none !important; box-shadow: none !important; box-sizing: border-box !important; overflow: visible !important; }
+            .no-print { display: none !important; }
+            header, .bottom-nav, main.p-4 > *:not(#viewBillView), #viewBillView > *:not(#billPreviewAreaContainer) { display: none !important; }
+             #viewBillView { visibility: visible !important; display: block !important; width: 100% !important; height: auto !important; padding: 0 !important; margin: 0 !important; }
+        }
+        
+        .bill-preview-area table { width: 100%; border-collapse: collapse; margin-bottom: 5px; }
+        .bill-preview-area th, .bill-preview-area td { border: 1px solid #333; padding: 2px 3px; text-align: left; vertical-align: top; font-size: 7.5px; } 
+        .bill-preview-area .item-table td { line-height: 1.4; }
+        .bill-preview-area .item-table .part-no { font-size: 7px; color: #555; }
+        .bill-preview-area .header-company-name { font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 1px; }
+        .bill-preview-area .header-address { font-size: 8px; text-align: center; margin-bottom: 1px; line-height: 1.2; }
+        .bill-preview-area .header-gstin { font-size: 8px; font-weight: bold; text-align: center; margin-bottom: 3px; }
+        .bill-preview-area .tax-invoice-title { font-size: 12px; font-weight: bold; text-align: center; margin-bottom: 3px; }
+
+        .modal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
+        .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 500px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .close-button { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close-button:hover, .close-button:focus { color: black; text-decoration: none; }
+        #loadingSpinner { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; }
+        .spinner { border: 4px solid rgba(0, 0, 0, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #4f46e5; animation: spin 1s ease infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .pagination-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="loginView" class="flex items-center justify-center min-h-screen bg-gray-50">
+        <div class="w-full max-w-md p-8 space-y-6 bg-white rounded-xl shadow-lg">
+            <div class="text-center">
+                <img src="https://jetsetbranding.com/Webauto.jpg" alt="Company Logo" class="w-48 mx-auto mb-4">
+                <h2 class="text-2xl font-bold text-gray-800">Welcome Back</h2>
+                <p class="text-sm text-gray-500">Please sign in to continue</p>
+            </div>
+            <form id="loginForm" class="space-y-4">
+                <div>
+                    <label for="username" class="text-sm font-medium text-gray-700">Username</label>
+                    <input type="text" id="username" name="username" required class="w-full px-4 py-2 mt-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="admin">
+                </div>
+                <div>
+                    <label for="password" class="text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="password" name="password" required class="w-full px-4 py-2 mt-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="admin">
+                </div>
+                <button type="submit" class="w-full px-4 py-2 font-bold text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                    Sign In
+                </button>
+                <p id="loginError" class="text-sm text-red-500 text-center hidden"></p>
+            </form>
+        </div>
+    </div>
+
+    <div id="appContainer" class="app-container bg-white shadow-lg pb-20 hidden">
+        <header class="bg-indigo-600 text-white p-4 sticky top-0 z-50 shadow-md flex items-center justify-between no-print">
+            <h1 class="text-xl font-bold text-left" id="viewTitle">Bill Generator</h1>
+            <button id="logoutButton" class="text-white hover:text-gray-200"><i class="fas fa-sign-out-alt mr-1"></i> Logout</button>
+        </header>
+
+        <div id="loadingSpinner" class="hidden no-print"><div class="spinner"></div></div>
+        <div id="messageModal" class="modal no-print"><div class="modal-content"><span class="close-button" onclick="App.closeModal()">&times;</span><p id="modalMessageText" class="text-gray-700 my-4"></p><button onclick="App.closeModal()" class="mt-4 bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded w-full">OK</button></div></div>
+        <div id="confirmationModal" class="modal no-print"><div class="modal-content"><h3 class="text-lg font-semibold mb-3" id="confirmationModalTitle"></h3><p id="confirmationModalMessage" class="text-gray-700 mb-4"></p><div class="flex justify-end space-x-3"><button id="confirmCancelButton" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-md">Cancel</button><button id="confirmActionButton" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-md">Confirm</button></div></div></div>
+
+        <main class="p-4">
+            <div id="dashboardView" class="view active">
+                <h2 class="text-lg font-semibold mb-4">Dashboard</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <button onclick="App.navigateTo('createBillView')" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-md flex items-center justify-center text-lg transition-transform transform hover:scale-105"><i class="fas fa-file-invoice mr-2"></i> Create New Bill</button>
+                    <button onclick="App.navigateTo('billsListView')" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-md flex items-center justify-center text-lg transition-transform transform hover:scale-105"><i class="fas fa-list-alt mr-2"></i> View Bills</button>
+                </div>
+            </div>
+
+            <div id="settingsView" class="view">
+                <h2 class="text-lg font-semibold mb-3">Seller Settings</h2>
+                <form id="settingsForm" class="space-y-4 bg-gray-50 p-4 rounded-lg shadow">
+                    <div><label for="sellerName" class="block text-sm font-medium text-gray-700">Business Name</label><input type="text" id="sellerName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" required></div>
+                    <div><label for="sellerAddress" class="block text-sm font-medium text-gray-700">Address</label><textarea id="sellerAddress" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" required></textarea></div>
+                    <div><label for="sellerGstin" class="block text-sm font-medium text-gray-700">GSTIN</label><input type="text" id="sellerGstin" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></div>
+                    <div><label for="sellerEmail" class="block text-sm font-medium text-gray-700">Your Email (for CC)</label><input type="email" id="sellerEmail" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></div>
+                    <div><label for="sellerCompanyLogoUrl" class="block text-sm font-medium text-gray-700">Company Logo URL (Optional)</label><input type="url" id="sellerCompanyLogoUrl" placeholder="https://example.com/logo.png" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></div>
+                    <div><label for="sellerBankName" class="block text-sm font-medium text-gray-700">Bank Name</label><input type="text" id="sellerBankName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></div>
+                    <div><label for="sellerAccountNo" class="block text-sm font-medium text-gray-700">Account No.</label><input type="text" id="sellerAccountNo" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></div>
+                    <div><label for="sellerIfsc" class="block text-sm font-medium text-gray-700">IFSC Code</label><input type="text" id="sellerIfsc" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></div>
+                    <div><label for="nextBillNumberPrefix" class="block text-sm font-medium text-gray-700">Bill Prefix</label><input type="text" id="nextBillNumberPrefix" placeholder="e.g., INV-" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"><label for="nextBillNumber" class="block text-sm font-medium text-gray-700 mt-2">Next Bill No.</label><input type="number" id="nextBillNumber" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" required></div>
+                    <div><label for="defaultTerms" class="block text-sm font-medium text-gray-700">Default Terms</label><textarea id="defaultTerms" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></textarea></div>
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow">Save Settings</button>
+                </form>
+            </div>
+
+            <div id="partiesView" class="view">
+                <div class="flex justify-between items-center mb-3"><h2 class="text-lg font-semibold">Manage Parties</h2><button onclick="App.showPartyForm()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm shadow">Add New</button></div>
+                <div class="mb-4"><input type="search" id="partySearchInput" placeholder="Search parties..." class="w-full p-2 border border-gray-300 rounded-md shadow-sm"></div>
+                <form id="partyForm" class="hidden space-y-3 bg-gray-50 p-4 rounded-lg shadow mb-4">
+                    <input type="hidden" id="partyId">
+                    <div><label for="partyName" class="block text-sm font-medium text-gray-700">Party Name</label><input type="text" id="partyName" class="mt-1 block w-full rounded-md border-gray-300 p-2" required></div>
+                    <div><label for="partyEmail" class="block text-sm font-medium text-gray-700">Party Email</label><input type="email" id="partyEmail" class="mt-1 block w-full rounded-md border-gray-300 p-2"></div>
+                    <div><label for="partyAddress" class="block text-sm font-medium text-gray-700">Address</label><textarea id="partyAddress" rows="2" class="mt-1 block w-full rounded-md border-gray-300 p-2"></textarea></div>
+                    <div><label for="partyGstin" class="block text-sm font-medium text-gray-700">Party GSTIN</label><input type="text" id="partyGstin" class="mt-1 block w-full rounded-md border-gray-300 p-2"></div>
+                    <div class="flex space-x-2 pt-2"><button type="submit" class="flex-1 bg-indigo-600 text-white font-bold py-2 px-4 rounded-md shadow">Save</button><button type="button" onclick="App.hidePartyForm()" class="flex-1 bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-md shadow">Cancel</button></div>
+                </form>
+                <div id="partiesList" class="space-y-3"></div>
+            </div>
+
+            <div id="productsView" class="view">
+                <div class="flex justify-between items-center mb-3"><h2 class="text-lg font-semibold">Manage Products/Services</h2><button onclick="App.showProductForm()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm shadow">Add New</button></div>
+                <div class="mb-4"><input type="search" id="productSearchInput" placeholder="Search products by Name, HSN, or Part No..." class="w-full p-2 border border-gray-300 rounded-md shadow-sm"></div>
+                <form id="productForm" class="hidden space-y-3 bg-gray-50 p-4 rounded-lg shadow mb-4">
+                    <input type="hidden" id="productId">
+                    <div><label for="productDescription" class="block text-sm font-medium text-gray-700">Description</label><input type="text" id="productDescription" class="mt-1 block w-full rounded-md border-gray-300 p-2" required></div>
+                    <div><label for="productPartNo" class="block text-sm font-medium text-gray-700">Part No.</label><input type="text" id="productPartNo" class="mt-1 block w-full rounded-md border-gray-300 p-2"></div>
+                    <div><label for="productHsnSac" class="block text-sm font-medium text-gray-700">HSN/SAC</label><input type="text" id="productHsnSac" class="mt-1 block w-full rounded-md border-gray-300 p-2"></div>
+                    <div><label for="productUnitPrice" class="block text-sm font-medium text-gray-700">Unit Price (excl. Tax)</label><input type="number" id="productUnitPrice" step="0.01" min="0" class="mt-1 block w-full rounded-md border-gray-300 p-2" required></div>
+                    <div><label for="productGstRate" class="block text-sm font-medium text-gray-700">GST Rate (%)</label><input type="number" id="productGstRate" step="0.01" min="0" class="mt-1 block w-full rounded-md border-gray-300 p-2" required></div>
+                    <div class="flex space-x-2 pt-2"><button type="submit" class="flex-1 bg-indigo-600 text-white font-bold py-2 px-4 rounded-md shadow">Save</button><button type="button" onclick="App.hideProductForm()" class="flex-1 bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-md shadow">Cancel</button></div>
+                </form>
+                <div id="productsList" class="space-y-3"></div>
+                <div id="productPaginationControls" class="mt-4 flex justify-between items-center pagination-controls"></div>
+            </div>
+            
+            <div id="createBillView" class="view">
+                <h2 class="text-lg font-semibold mb-3">Create New Bill</h2>
+                <form id="billForm" class="space-y-4">
+                    <input type="hidden" id="billId">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg shadow">
+                        <div><label for="billNumber" class="block text-sm font-medium">Bill No.</label><input type="text" id="billNumber" class="mt-1 block w-full p-2 bg-gray-200" readonly></div>
+                        <div><label for="billDate" class="block text-sm font-medium">Date</label><input type="date" id="billDate" class="mt-1 block w-full p-2" required></div>
+                        <div class="md:col-span-2"><label for="billVehicleModelNo" class="block text-sm font-medium">Model No.</label><input type="text" id="billVehicleModelNo" class="mt-1 block w-full p-2"></div>
+                        <div class="md:col-span-2"><label for="billReference" class="block text-sm font-medium">Vehicle No. (Reference)</label><input type="text" id="billReference" class="mt-1 block w-full p-2"></div>
+                    </div>
+
+                    <div class="p-4 bg-gray-50 rounded-lg shadow">
+                        <h3 class="text-md font-semibold mb-3">Party Details</h3>
+                        <div class="mb-3"><label for="selectParty" class="block text-sm font-medium">Select Existing Party</label><select id="selectParty" class="mt-1 block w-full p-2"><option value="">-- New Party --</option></select></div>
+                        <div class="space-y-3">
+                            <div><label for="billPartyName" class="block text-sm font-medium">Party Name</label><input type="text" id="billPartyName" class="mt-1 block w-full p-2" required></div>
+                            <div><label for="billPartyEmail" class="block text-sm font-medium">Party Email</label><input type="email" id="billPartyEmail" class="mt-1 block w-full p-2"></div>
+                            <div><label for="billPartyAddress" class="block text-sm font-medium">Party Address</label><textarea id="billPartyAddress" rows="2" class="mt-1 block w-full p-2"></textarea></div>
+                            <div><label for="billPartyGstin" class="block text-sm font-medium">Party GSTIN</label><input type="text" id="billPartyGstin" class="mt-1 block w-full p-2"></div>
+                            <div class="mt-2 flex items-center"><input type="checkbox" id="savePartyDetails" class="h-4 w-4"><label for="savePartyDetails" class="ml-2 text-sm">Save/Update Party Details</label></div>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-gray-50 rounded-lg shadow">
+                        <h3 class="text-md font-semibold mb-3">Items</h3>
+                        <div id="billItemsContainer" class="space-y-3"></div>
+                        <div class="mt-4 flex flex-wrap gap-2">
+                            <button type="button" onclick="App.addLaborItem('Remove & Refitting')" class="bg-cyan-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-wrench mr-1"></i> Add R/R</button>
+                            <button type="button" onclick="App.addLaborItem('Denting & Painting')" class="bg-orange-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-paint-roller mr-1"></i> Add Dent/Paint</button>
+                            <button type="button" onclick="App.addLaborItem('Other Labour')" class="bg-sky-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-tools mr-1"></i> Add Labour</button>
+                            <button type="button" onclick="App.addBillItem()" class="bg-blue-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-plus mr-1"></i> Add Item</button>
+                            <button type="button" onclick="App.showAddProductFromSavedModal()" class="bg-teal-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-archive mr-1"></i> Add From Saved</button>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 bg-gray-100 rounded-lg shadow mt-4">
+                        <h3 class="text-md font-semibold mb-3">Summary</h3>
+                        <div class="space-y-1 text-sm">
+                            <div class="flex justify-between"><span>Subtotal:</span> <span id="billSubtotal" class="font-medium">₹0.00</span></div>
+                            <div class="flex justify-between"><span>Total CGST:</span> <span id="billTotalCgst" class="font-medium">₹0.00</span></div>
+                            <div class="flex justify-between"><span>Total SGST:</span> <span id="billTotalSgst" class="font-medium">₹0.00</span></div>
+                            <div class="flex justify-between"><span>Round Off:</span> <span id="billRoundOff" class="font-medium">₹0.00</span></div>
+                            <hr class="my-2"><div class="flex justify-between font-bold text-lg"><span>Grand Total:</span> <span id="billGrandTotal">₹0.00</span></div>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-md shadow text-lg"><i class="fas fa-save mr-2"></i> Save & Generate Bill</button>
+                </form>
+            </div>
+
+            <div id="billsListView" class="view"><h2 class="text-lg font-semibold mb-3">Saved Bills</h2><div id="billsListContainer" class="space-y-3"></div></div>
+
+            <div id="viewBillView" class="view">
+                <div class="flex flex-wrap justify-between items-center mb-4 gap-2 no-print">
+                    <h2 class="text-lg font-semibold">Bill Preview</h2>
+                    <div class="flex flex-wrap space-x-2 gap-y-2">
+                        <button onclick="App.downloadBillAsPdf()" class="bg-red-500 text-white font-bold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-file-pdf mr-1"></i> Download PDF</button>
+                        <button onclick="App.sendBillByEmail()" class="bg-purple-500 text-white font-bold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-envelope mr-1"></i> Send Email</button>
+                        <button onclick="window.print()" class="bg-blue-500 text-white font-bold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-print mr-1"></i> Print</button>
+                    </div>
+                </div>
+                <div id="billPreviewAreaContainer" class="overflow-x-auto"><div id="billPreviewArea" class="bill-preview-area"></div></div>
+            </div>
+        </main>
+
+        <nav class="bottom-nav bg-gray-800 text-white p-2 shadow-t-lg no-print">
+            <div class="flex justify-around">
+                <button onclick="App.navigateTo('dashboardView')" class="flex flex-col items-center p-2 rounded hover:bg-gray-700 w-1/4"><i class="fas fa-tachometer-alt text-xl"></i><span class="text-xs mt-1">Dashboard</span></button>
+                <button onclick="App.navigateTo('createBillView')" class="flex flex-col items-center p-2 rounded hover:bg-gray-700 w-1/4"><i class="fas fa-plus-circle text-xl"></i><span class="text-xs mt-1">New Bill</span></button>
+                <button onclick="App.navigateToDataMgmtMenu()" class="flex flex-col items-center p-2 rounded hover:bg-gray-700 w-1/4"><i class="fas fa-database text-xl"></i><span class="text-xs mt-1">Data</span></button>
+                <button onclick="App.navigateTo('settingsView')" class="flex flex-col items-center p-2 rounded hover:bg-gray-700 w-1/4"><i class="fas fa-cog text-xl"></i><span class="text-xs mt-1">Settings</span></button>
+            </div>
+        </nav>
+    </div>
+
+    <div id="dataMgmtModal" class="modal no-print"><div class="modal-content"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Manage Data</h3><span class="close-button" onclick="App.closeDataMgmtModal()">&times;</span></div><div class="space-y-3"><button onclick="App.navigateTo('partiesView'); App.closeDataMgmtModal();" class="w-full bg-purple-500 text-white font-bold py-2.5 px-4 rounded-md shadow">Manage Parties</button><button onclick="App.navigateTo('productsView'); App.closeDataMgmtModal();" class="w-full bg-orange-500 text-white font-bold py-2.5 px-4 rounded-md shadow">Manage Products</button></div></div></div>
+    <div id="addProductFromSavedModal" class="modal no-print"><div class="modal-content"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Select Product</h3><span class="close-button" onclick="App.closeAddProductFromSavedModal()">&times;</span></div><div class="mb-3"><input type="search" id="modalProductSearchInput" placeholder="Search saved products..." class="w-full p-2 border"></div><div id="savedProductsSelectionList" class="max-h-60 overflow-y-auto border p-2"></div><div id="modalProductPaginationControls" class="mt-3 flex justify-between items-center"></div><button onclick="App.closeAddProductFromSavedModal()" class="mt-4 bg-gray-500 text-white font-bold py-2 px-4 rounded-md w-full shadow">Close</button></div></div>
+
+    <script type="module">
+        const API_BASE_URL = 'http://localhost:3000/api';
+
+        let currentView = 'dashboardView';
+        let sellerSettings = null;
+        let itemCounter = 0;
+        let confirmActionCallback = null;
+        let currentPreviewBillData = null;
+        let allParties = [];
+        let allProductsMaster = []; 
+        
+        let currentProductPage = 1, totalProductPages = 1;
+        const PRODUCTS_PER_PAGE = 10;
+        let currentModalProductPage = 1, totalModalProductPages = 1;
+
+        async function apiRequest(endpoint, method = 'GET', body = null) {
+            const options = { method, headers: { 'Content-Type': 'application/json' } };
+            if (body) options.body = JSON.stringify(body);
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+                if (response.status === 204) return { success: true, data: null, message: "Operation successful (No Content)" };
+                
+                let responseData;
+                const responseText = await response.text();
+                try {
+                    responseData = JSON.parse(responseText);
+                } catch (e) {
+                    if (!response.ok) { 
+                        throw new Error(responseText || `HTTP error! status: ${response.status}`);
+                    }
+                    console.warn("API response was not JSON, but status was OK. Raw text:", responseText);
+                    return { success: true, data: responseText, message: "Received non-JSON success response."};
+                }
+
+                if (!response.ok) throw new Error(responseData.message || responseText || `HTTP error! status: ${response.status}`);
+                return responseData;
+            } catch (error) {
+                console.error(`API request to ${method} ${API_BASE_URL}${endpoint} failed:`, error);
+                App.showMessage(`Error: ${error.message}. Check API connection and server logs.`, true);
+                throw error;
+            }
+        }
+
+        const App = {
+            init: () => {
+                document.getElementById('loginForm').addEventListener('submit', App.handleLogin);
+                document.getElementById('logoutButton').addEventListener('click', App.handleLogout);
+                document.getElementById('settingsForm').addEventListener('submit', App.saveSettings);
+                document.getElementById('partyForm').addEventListener('submit', App.saveParty);
+                document.getElementById('productForm').addEventListener('submit', App.saveProduct);
+                document.getElementById('billForm').addEventListener('submit', App.saveBill);
+                document.getElementById('selectParty').addEventListener('change', App.populatePartyDetailsForBill);
+                document.getElementById('confirmActionButton').addEventListener('click', () => { if (confirmActionCallback) confirmActionCallback(); App.closeConfirmationModal(); });
+                document.getElementById('confirmCancelButton').addEventListener('click', App.closeConfirmationModal);
+                document.getElementById('partySearchInput').addEventListener('input', (e) => App.filterAndRenderParties(e.target.value));
+                
+                let prodTimeout;
+                document.getElementById('productSearchInput').addEventListener('input', (e) => { clearTimeout(prodTimeout); prodTimeout = setTimeout(() => App.loadProducts(1, e.target.value), 300); });
+                let modalProdTimeout;
+                document.getElementById('modalProductSearchInput').addEventListener('input', (e) => { clearTimeout(modalProdTimeout); modalProdTimeout = setTimeout(() => App.loadProductsForModal(1, e.target.value), 300); });
+            },
+            handleLogin: async (e) => {
+                e.preventDefault();
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+                const errorEl = document.getElementById('loginError');
+
+                // NOTE: Replace this with a real API call for authentication
+                if (username === 'admin' && password === 'admin') {
+                    document.getElementById('loginView').style.display = 'none';
+                    document.getElementById('appContainer').style.display = 'block';
+                    errorEl.classList.add('hidden');
+                    App.showLoading();
+                    App.navigateTo(currentView);
+                    await App.loadInitialData();
+                    App.hideLoading();
+                } else {
+                    errorEl.textContent = 'Invalid username or password.';
+                    errorEl.classList.remove('hidden');
+                }
+            },
+            handleLogout: () => {
+                document.getElementById('loginView').style.display = 'flex';
+                document.getElementById('appContainer').style.display = 'none';
+                document.getElementById('loginForm').reset();
+            },
+            loadInitialData: async () => {
+                App.showLoading();
+                try {
+                    await Promise.all([ App.loadSettings(), App.loadParties(true), App.loadProducts(1, '', true), App.loadBills() ]);
+                    App.prepareNewBillForm();
+                } catch (error) { App.showMessage("Failed to load initial data. Check console.", true); console.error("Initial data load error:", error); }
+                finally { App.hideLoading(); }
+            },
+            navigateTo: (viewId, title) => {
+                document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+                const targetView = document.getElementById(viewId);
+                if (targetView) targetView.classList.add('active');
+                else { document.getElementById('dashboardView').classList.add('active'); viewId = 'dashboardView'; App.showMessage(`Error: Page "${viewId}" not found.`, true); }
+                currentView = viewId;
+                let viewTitleText = title || document.querySelector(`#${viewId} h2`)?.textContent.trim() || document.querySelector(`.bottom-nav button[onclick*="${viewId}"] span`)?.textContent.trim() || "Bill Generator";
+                document.getElementById('viewTitle').textContent = viewTitleText;
+                if (viewId === 'createBillView' && !document.getElementById('billId').value) App.prepareNewBillForm();
+                if (viewId === 'partiesView') App.loadParties(true); 
+                if (viewId === 'productsView') App.loadProducts(currentProductPage, document.getElementById('productSearchInput').value || '', true); 
+                if (viewId === 'billsListView') App.loadBills();
+                window.scrollTo(0, 0);
+            },
+            showLoading: () => document.getElementById('loadingSpinner').classList.remove('hidden'),
+            hideLoading: () => document.getElementById('loadingSpinner').classList.add('hidden'),
+            showMessage: (message, isError = false) => {
+                const modal = document.getElementById('messageModal');
+                document.getElementById('modalMessageText').textContent = message;
+                modal.querySelector('.modal-content').classList.toggle('border-red-500', isError);
+                modal.style.display = 'block';
+            },
+            closeModal: () => { document.getElementById('messageModal').style.display = 'none'; document.getElementById('messageModal').querySelector('.modal-content').classList.remove('border-red-500');},
+            showConfirmation: (title, message, onConfirm) => {
+                document.getElementById('confirmationModalTitle').textContent = title;
+                document.getElementById('confirmationModalMessage').textContent = message;
+                confirmActionCallback = onConfirm;
+                document.getElementById('confirmationModal').style.display = 'block';
+            },
+            closeConfirmationModal: () => { document.getElementById('confirmationModal').style.display = 'none'; confirmActionCallback = null; },
+            loadSettings: async () => {
+                try {
+                    const response = await apiRequest('/settings');
+                    sellerSettings = response.data || { name: '', address: '', gstin: '', email: '', companyLogoUrl: '', bankName: '', accountNo: '', ifsc: '', terms: '', nextBillNumber: 1, nextBillNumberPrefix: 'INV-' };
+                    Object.keys(sellerSettings).forEach(key => { 
+                        const elId = key === 'defaultTerms' ? key : `seller${key.charAt(0).toUpperCase() + key.slice(1)}`;
+                        const el = document.getElementById(elId); 
+                        if (el) el.value = sellerSettings[key] || (key === 'nextBillNumber' ? 1 : (key === 'nextBillNumberPrefix' ? 'INV-' : ''));
+                    });
+                     if (sellerSettings.nextBillNumber === undefined || sellerSettings.nextBillNumber === null) document.getElementById('nextBillNumber').value = 1;
+                     if (sellerSettings.nextBillNumberPrefix === undefined || sellerSettings.nextBillNumberPrefix === null) document.getElementById('nextBillNumberPrefix').value = 'INV-';
+                     if (document.getElementById('sellerCompanyLogoUrl')) document.getElementById('sellerCompanyLogoUrl').value = sellerSettings.companyLogoUrl || '';
+
+                } catch (error) { console.error("Error loading settings:", error); }
+            },
+            saveSettings: async (e) => {
+                e.preventDefault(); App.showLoading();
+                const settingsData = {
+                    name: document.getElementById('sellerName').value.trim(), address: document.getElementById('sellerAddress').value.trim(),
+                    gstin: document.getElementById('sellerGstin').value.trim().toUpperCase(), email: document.getElementById('sellerEmail').value.trim(),
+                    companyLogoUrl: document.getElementById('sellerCompanyLogoUrl').value.trim(), // Save logo URL
+                    bankName: document.getElementById('sellerBankName').value.trim(), accountNo: document.getElementById('sellerAccountNo').value.trim(),
+                    ifsc: document.getElementById('sellerIfsc').value.trim().toUpperCase(), terms: document.getElementById('defaultTerms').value.trim(),
+                    nextBillNumber: parseInt(document.getElementById('nextBillNumber').value) || 1,
+                    nextBillNumberPrefix: document.getElementById('nextBillNumberPrefix').value.trim() || 'INV-',
+                };
+                try { const response = await apiRequest('/settings', 'POST', settingsData); sellerSettings = response.data; App.showMessage("Settings saved!"); App.navigateTo('dashboardView'); } 
+                finally { App.hideLoading(); }
+            },
+            showPartyForm: (party = null) => {
+                const form = document.getElementById('partyForm'); form.reset();
+                document.getElementById('partyId').value = party ? party.id : '';
+                if (party) { Object.keys(party).forEach(key => { const el = document.getElementById(`party${key.charAt(0).toUpperCase() + key.slice(1)}`); if(el) el.value = party[key] || ''; });}
+                form.classList.remove('hidden'); document.getElementById('partyName').focus();
+            },
+            hidePartyForm: () => { document.getElementById('partyForm').classList.add('hidden'); document.getElementById('partyForm').reset(); document.getElementById('partyId').value = ''; },
+            saveParty: async (e) => {
+                e.preventDefault(); App.showLoading();
+                const partyId = document.getElementById('partyId').value;
+                const partyData = { name: document.getElementById('partyName').value.trim(), email: document.getElementById('partyEmail').value.trim(), address: document.getElementById('partyAddress').value.trim(), gstin: document.getElementById('partyGstin').value.trim().toUpperCase() };
+                if (!partyData.name) { App.showMessage("Party name is required.", true); App.hideLoading(); return; }
+                try {
+                    await apiRequest(partyId ? `/parties/${partyId}` : '/parties', partyId ? 'PUT' : 'POST', partyData);
+                    App.showMessage(partyId ? "Party updated." : "Party added."); App.hidePartyForm(); await App.loadParties(true);
+                } finally { App.hideLoading(); }
+            },
+            loadParties: async (forceReload = false) => {
+                if (forceReload || allParties.length === 0) { try { const response = await apiRequest('/parties'); allParties = response.data || []; } catch (e) { allParties = []; console.error("Error loading parties:", e); } }
+                App.filterAndRenderParties(document.getElementById('partySearchInput').value);
+            },
+            filterAndRenderParties: (searchTerm) => {
+                const lowerSearchTerm = searchTerm.toLowerCase();
+                const filtered = allParties.filter(p => Object.values(p).some(val => String(val).toLowerCase().includes(lowerSearchTerm)));
+                App.renderParties(filtered);
+            },
+            renderParties: (partiesToRender) => {
+                const listEl = document.getElementById('partiesList'); listEl.innerHTML = '';
+                const selectEl = document.getElementById('selectParty'); const firstOpt = selectEl.options[0]; selectEl.innerHTML = ''; selectEl.appendChild(firstOpt);
+                if (!partiesToRender || partiesToRender.length === 0) { listEl.innerHTML = '<p class="text-gray-500 p-3 text-center">No parties found.</p>'; return; }
+                partiesToRender.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(party => {
+                    const div = document.createElement('div'); div.className = 'p-3 bg-white border rounded-md shadow-sm flex justify-between items-center';
+                    const partyJson = encodeURIComponent(JSON.stringify(party));
+                    div.innerHTML = `<div><p class="font-semibold">${party.name}</p><p class="text-xs text-gray-500">${party.email||''} | ${party.gstin||''}</p></div><div class="space-x-1"><button onclick="App.showPartyForm(JSON.parse(decodeURIComponent('${partyJson}')))" class="text-blue-500 p-1"><i class="fas fa-edit"></i></button><button onclick="App.deleteParty('${party.id}', '${party.name ? party.name.replace(/'/g, "\\'") : 'this party'}')" class="text-red-500 p-1"><i class="fas fa-trash"></i></button></div>`;
+                    listEl.appendChild(div);
+                    const option = document.createElement('option'); option.value = party.id; option.textContent = `${party.name} (${party.gstin || 'No GSTIN'})`; option.dataset.partyData = partyJson; selectEl.appendChild(option);
+                });
+            },
+            deleteParty: async (id, name) => App.showConfirmation("Delete Party", `Delete "${name}"?`, async () => { App.showLoading(); try { await apiRequest(`/parties/${id}`, 'DELETE'); App.showMessage("Party deleted."); App.loadParties(true); } finally { App.hideLoading(); } }),
+            populatePartyDetailsForBill: (e) => {
+                const opt = e.target.options[e.target.selectedIndex];
+                if (opt.value && opt.dataset.partyData) {
+                    const party = JSON.parse(decodeURIComponent(opt.dataset.partyData));
+                    ['Name', 'Email', 'Address', 'Gstin'].forEach(f => document.getElementById(`billParty${f}`).value = party[f.toLowerCase()] || '');
+                } else { ['Name', 'Email', 'Address', 'Gstin'].forEach(f => document.getElementById(`billParty${f}`).value = ''); }
+            },
+            showProductForm: (product = null) => {
+                const form = document.getElementById('productForm'); form.reset();
+                document.getElementById('productId').value = product ? product.id : '';
+                if (product) {
+                    document.getElementById('productDescription').value = product.description || '';
+                    document.getElementById('productPartNo').value = product.partNo || '';
+                    document.getElementById('productHsnSac').value = product.hsnSac || '';
+                    document.getElementById('productUnitPrice').value = product.unitPrice || 0;
+                    document.getElementById('productGstRate').value = product.gstRate || 0;
+                }
+                form.classList.remove('hidden'); document.getElementById('productDescription').focus();
+            },
+            hideProductForm: () => { document.getElementById('productForm').classList.add('hidden'); document.getElementById('productForm').reset(); document.getElementById('productId').value = ''; },
+            saveProduct: async (e) => {
+                e.preventDefault(); App.showLoading();
+                const productId = document.getElementById('productId').value;
+                const productData = {
+                    description: document.getElementById('productDescription').value.trim(),
+                    partNo: document.getElementById('productPartNo').value.trim(),
+                    hsnSac: document.getElementById('productHsnSac').value.trim(),
+                    unitPrice: parseFloat(document.getElementById('productUnitPrice').value) || 0,
+                    gstRate: parseFloat(document.getElementById('productGstRate').value) || 0,
+                };
+                if (!productData.description) { App.showMessage("Product description is required.", true); App.hideLoading(); return; }
+                try {
+                    await apiRequest(productId ? `/products/${productId}` : '/products', productId ? 'PUT' : 'POST', productData);
+                    App.showMessage(productId ? "Product updated." : "Product added."); App.hideProductForm(); App.loadProducts(1, '', true); 
+                } finally { App.hideLoading(); }
+            },
+            loadProducts: async (page = 1, searchTerm = '', loadAllForModal = false) => {
+                App.showLoading();
+                const endpoint = loadAllForModal ? `/products?limit=10000` : `/products?page=${page}&limit=${PRODUCTS_PER_PAGE}&search=${encodeURIComponent(searchTerm)}`; 
+                try {
+                    const response = await apiRequest(endpoint);
+                    if (loadAllForModal) {
+                        allProductsMaster = response.data || [];
+                        App.loadProductsForModal(1, document.getElementById('modalProductSearchInput').value); 
+                    } else {
+                        App.renderProducts(response.data || []);
+                        if (response.pagination) {
+                            currentProductPage = response.pagination.currentPage;
+                            totalProductPages = response.pagination.totalPages;
+                            App.renderProductPaginationControls(response.pagination);
+                        } else { App.renderProductPaginationControls({currentPage:1, totalPages:1, totalProducts: (response.data || []).length }); }
+                    }
+                } catch (error) { console.error("Error loading products:", error); if (!loadAllForModal) {App.renderProducts([]); App.renderProductPaginationControls({currentPage:1, totalPages:1});} }
+                finally { App.hideLoading(); }
+            },
+            renderProducts: (productsToRender) => {
+                const listEl = document.getElementById('productsList'); listEl.innerHTML = '';
+                if (!productsToRender || productsToRender.length === 0) { listEl.innerHTML = '<p class="text-gray-500 p-3 text-center">No products found.</p>'; return; }
+                productsToRender.forEach(product => {
+                    const div = document.createElement('div'); div.className = 'p-3 bg-white border rounded-md shadow-sm flex justify-between items-center';
+                    const productJson = encodeURIComponent(JSON.stringify(product));
+                    const unitPrice = parseFloat(product.unitPrice || 0).toFixed(2);
+                    const gstRate = parseFloat(product.gstRate || 0);
+                    div.innerHTML = `<div><p class="font-semibold">${product.description} ${product.partNo ? `<span class='text-xs bg-gray-200 p-1 rounded'>${product.partNo}</span>` : ''}</p><p class="text-xs text-gray-500">HSN: ${product.hsnSac||'N/A'} | Price: ₹${unitPrice} | GST: ${gstRate}%</p></div><div class="space-x-1"><button onclick="App.showProductForm(JSON.parse(decodeURIComponent('${productJson}')))" class="text-blue-500 p-1"><i class="fas fa-edit"></i></button><button onclick="App.deleteProduct('${product.id}', '${product.description ? product.description.replace(/'/g, "\\'") : 'this product'}')" class="text-red-500 p-1"><i class="fas fa-trash"></i></button></div>`;
+                    listEl.appendChild(div);
+                });
+            },
+            renderProductPaginationControls: (pagination) => {
+                const controlsEl = document.getElementById('productPaginationControls'); controlsEl.innerHTML = '';
+                if (!pagination || pagination.totalPages <= 1) return;
+                controlsEl.innerHTML = `<button onclick="App.loadProducts(${pagination.currentPage - 1}, document.getElementById('productSearchInput').value)" class="bg-indigo-500 text-white py-2 px-4 rounded-md" ${pagination.currentPage <= 1 ? 'disabled' : ''}>Prev</button><span>Page ${pagination.currentPage} of ${pagination.totalPages}</span><button onclick="App.loadProducts(${pagination.currentPage + 1}, document.getElementById('productSearchInput').value)" class="bg-indigo-500 text-white py-2 px-4 rounded-md" ${pagination.currentPage >= pagination.totalPages ? 'disabled' : ''}>Next</button>`;
+            },
+            deleteProduct: async (id, name) => App.showConfirmation("Delete Product", `Delete "${name}"?`, async () => { App.showLoading(); try { await apiRequest(`/products/${id}`, 'DELETE'); App.showMessage("Product deleted."); App.loadProducts(currentProductPage, '', true); } finally { App.hideLoading(); } }), 
+            
+            showAddProductFromSavedModal: () => { document.getElementById('modalProductSearchInput').value = ''; App.loadProductsForModal(1); document.getElementById('addProductFromSavedModal').style.display = 'block'; },
+            closeAddProductFromSavedModal: () => { document.getElementById('addProductFromSavedModal').style.display = 'none'; },
+            loadProductsForModal: (page = 1, searchTerm = '') => { 
+                const lowerSearchTerm = searchTerm.toLowerCase();
+                const filteredProducts = allProductsMaster.filter(p => 
+                    (p.description && p.description.toLowerCase().includes(lowerSearchTerm)) ||
+                    (p.hsnSac && p.hsnSac.toLowerCase().includes(lowerSearchTerm)) ||
+                    (p.partNo && p.partNo.toLowerCase().includes(lowerSearchTerm))
+                );
+                const limit = PRODUCTS_PER_PAGE; const offset = (page - 1) * limit;
+                const paginatedProducts = filteredProducts.slice(offset, offset + limit);
+                App.renderProductsForModalSelection(paginatedProducts);
+                totalModalProductPages = Math.ceil(filteredProducts.length / limit); currentModalProductPage = page;
+                App.renderModalProductPaginationControls({ currentPage: currentModalProductPage, totalPages: totalModalProductPages, totalProducts: filteredProducts.length });
+            },
+            renderProductsForModalSelection: (products) => {
+                const listEl = document.getElementById('savedProductsSelectionList'); listEl.innerHTML = '';
+                if (!products || products.length === 0) { listEl.innerHTML = '<p class="text-gray-500 p-2 text-center">No products match search.</p>'; return; }
+                products.forEach(p => {
+                    const div = document.createElement('div'); div.className = 'p-2 border-b hover:bg-indigo-50 cursor-pointer';
+                    div.innerHTML = `<p class="font-medium text-sm">${p.description} ${p.partNo ? `<span class='text-xs bg-gray-200 p-1 rounded'>${p.partNo}</span>` : ''}</p><p class="text-xs text-gray-500">Price: ₹${(parseFloat(p.unitPrice)||0).toFixed(2)} | GST: ${p.gstRate}%</p>`;
+                    div.onclick = () => { App.addBillItem(p); App.closeAddProductFromSavedModal(); };
+                    listEl.appendChild(div);
+                });
+            },
+            renderModalProductPaginationControls: (pagination) => {
+                const controlsEl = document.getElementById('modalProductPaginationControls'); controlsEl.innerHTML = '';
+                if (!pagination || pagination.totalPages <= 1) return;
+                controlsEl.innerHTML = `<button onclick="App.loadProductsForModal(${pagination.currentPage - 1}, document.getElementById('modalProductSearchInput').value)" class="bg-indigo-500 text-white text-xs py-1 px-2 rounded" ${pagination.currentPage <= 1 ? 'disabled' : ''}>Prev</button><span class="text-xs">Pg ${pagination.currentPage}/${pagination.totalPages}</span><button onclick="App.loadProductsForModal(${pagination.currentPage + 1}, document.getElementById('modalProductSearchInput').value)" class="bg-indigo-500 text-white text-xs py-1 px-2 rounded" ${pagination.currentPage >= pagination.totalPages ? 'disabled' : ''}>Next</button>`;
+            },
+            
+            prepareNewBillForm: () => {
+                document.getElementById('billForm').reset(); document.getElementById('billItemsContainer').innerHTML = ''; itemCounter = 0;
+                if (sellerSettings && sellerSettings.nextBillNumber !== undefined) {
+                    document.getElementById('billNumber').value = `${sellerSettings.nextBillNumberPrefix || 'INV-'}${String(sellerSettings.nextBillNumber).padStart(3, '0')}`;
+                } else { document.getElementById('billNumber').value = 'INV-001'; }
+                document.getElementById('billDate').valueAsDate = new Date();
+                App.updateBillSummary(); ['Name', 'Email', 'Address', 'Gstin'].forEach(f => document.getElementById(`billParty${f}`).value = '');
+                document.getElementById('selectParty').value = ""; document.getElementById('savePartyDetails').checked = false; document.getElementById('billId').value = '';
+            },
+            addLaborItem: (description) => {
+                App.addBillItem({ description, hsnSac: '998729', gstRate: 18, unitPrice: 0, quantity: 1, itemType: 'labour' });
+            },
+            addBillItem: (itemData = {}) => { 
+                itemCounter++; const itemId = `item-row-${itemCounter}`;
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'p-3 border rounded-lg space-y-2 bill-item-row bg-white shadow-sm'; itemDiv.id = itemId;
+                
+                const isLabour = itemData.itemType === 'labour';
+                
+                itemDiv.innerHTML = `
+                    <button type="button" onclick="App.removeBillItem('${itemId}')" class="float-right text-red-500 p-1 text-lg">&times;</button>
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-start">
+                        <div class="md:col-span-3"><label class="text-xs font-medium">Description</label><input type="text" name="itemDescription" class="mt-1 w-full p-1 border text-sm" value="${itemData.description || ''}" required></div>
+                        <div class="md:col-span-2"><label class="text-xs font-medium">Part No.</label><input type="text" name="itemPartNo" class="mt-1 w-full p-1 border text-sm" value="${itemData.partNo || ''}"></div>
+                        <div class="md:col-span-2"><label class="text-xs font-medium">HSN/SAC</label><input type="text" name="itemHsnSac" class="mt-1 w-full p-1 border text-sm" value="${itemData.hsnSac || ''}"></div>
+                        <div class="md:col-span-1"><label class="text-xs font-medium">Qty</label><input type="number" name="itemQuantity" step="any" class="mt-1 w-full p-1 border text-sm" value="${itemData.quantity || 1}" ${isLabour ? 'readonly' : ''}></div>
+                        <div class="md:col-span-2"><label class="text-xs font-medium">${isLabour ? 'Amount' : 'Unit Price'}</label><input type="number" name="itemUnitPrice" step="0.01" class="mt-1 w-full p-1 border text-sm" value="${itemData.unitPrice || ''}" required></div>
+                        <div class="md:col-span-1"><label class="text-xs font-medium">GST%</label><input type="number" name="itemGstRate" step="any" class="mt-1 w-full p-1 border text-sm" value="${itemData.gstRate !== undefined ? itemData.gstRate : ''}" required></div>
+                        <div class="md:col-span-1"><label class="text-xs font-medium">Total</label><input type="number" name="itemTotalAmount" class="mt-1 w-full p-1 border text-sm bg-gray-100" readonly></div>
+                    </div>
+                    <input type="hidden" name="itemType" value="${isLabour ? 'labour' : 'standard'}">`;
+                document.getElementById('billItemsContainer').appendChild(itemDiv);
+                itemDiv.querySelectorAll('input').forEach(input => input.addEventListener('input', App.updateBillSummary));
+                App.updateBillSummary();
+            },
+            removeBillItem: (itemId) => { document.getElementById(itemId)?.remove(); App.updateBillSummary(); },
+            updateBillSummary: () => {
+                let subtotal = 0, totalCgst = 0, totalSgst = 0;
+                document.querySelectorAll('.bill-item-row').forEach(row => {
+                    const qty = parseFloat(row.querySelector('input[name="itemQuantity"]').value) || 0;
+                    const unitPrice = parseFloat(row.querySelector('input[name="itemUnitPrice"]').value) || 0;
+                    const gstRate = parseFloat(row.querySelector('input[name="itemGstRate"]').value) || 0;
+                    
+                    const taxableValue = qty * unitPrice;
+                    row.querySelector('input[name="itemTotalAmount"]').value = taxableValue.toFixed(2);
+
+                    const cgst = gstRate > 0 ? (taxableValue * (gstRate / 2)) / 100 : 0;
+                    const sgst = gstRate > 0 ? (taxableValue * (gstRate / 2)) / 100 : 0;
+                    subtotal += taxableValue; totalCgst += cgst; totalSgst += sgst;
+                });
+                const grandTotalBeforeRound = subtotal + totalCgst + totalSgst;
+                const roundedGrandTotal = Math.round(grandTotalBeforeRound);
+                const roundOff = roundedGrandTotal - grandTotalBeforeRound;
+                document.getElementById('billSubtotal').textContent = `₹${subtotal.toFixed(2)}`;
+                document.getElementById('billTotalCgst').textContent = `₹${totalCgst.toFixed(2)}`;
+                document.getElementById('billTotalSgst').textContent = `₹${totalSgst.toFixed(2)}`;
+                document.getElementById('billRoundOff').textContent = `₹${roundOff.toFixed(2)}`;
+                document.getElementById('billGrandTotal').textContent = `₹${roundedGrandTotal.toFixed(2)}`;
+            },
+            saveBill: async (e) => {
+                e.preventDefault(); if (!sellerSettings) { App.showMessage("Seller settings missing.", true); return; } App.showLoading();
+                
+                const items = []; let calcSub = 0, calcCgst = 0, calcSgst = 0;
+                document.querySelectorAll('.bill-item-row').forEach(row => {
+                    const desc = row.querySelector('input[name="itemDescription"]').value.trim();
+                    const partNo = row.querySelector('input[name="itemPartNo"]').value.trim();
+                    const hsn = row.querySelector('input[name="itemHsnSac"]').value.trim();
+                    const qty = parseFloat(row.querySelector('input[name="itemQuantity"]').value) || 0;
+                    const unitP = parseFloat(row.querySelector('input[name="itemUnitPrice"]').value) || 0;
+                    const gst = parseFloat(row.querySelector('input[name="itemGstRate"]').value) || 0;
+                    
+                    if (desc && qty > 0 && unitP >= 0) { 
+                        const taxVal = qty * unitP;
+                        const cgstAmt = gst > 0 ? (taxVal * (gst / 2)) / 100 : 0;
+                        const sgstAmt = gst > 0 ? (taxVal * (gst / 2)) / 100 : 0;
+                        items.push({ 
+                            description: desc, partNo: partNo, hsnSac: hsn, 
+                            quantity: qty, unitPrice: unitP, gstRate: gst, 
+                            taxableValue: taxVal, cgstAmount: cgstAmt, sgstAmount: sgstAmt, 
+                            totalAmount: taxVal + cgstAmt + sgstAmt,
+                            // Legacy labor fields for backend compatibility
+                            removeRefitting: 0, dentingAcGas: 0, painting: 0 
+                        });
+                        calcSub += taxVal; calcCgst += cgstAmt; calcSgst += sgstAmt;
+                    }
+                });
+                if (items.length === 0) { App.showMessage("Add items to bill.", true); App.hideLoading(); return; }
+                const gtBeforeRound = calcSub + calcCgst + calcSgst;
+                const finalGT = Math.round(gtBeforeRound);
+                const finalRoundOff = finalGT - gtBeforeRound;
+
+                const billData = {
+                    billNumber: document.getElementById('billNumber').value, date: document.getElementById('billDate').value,
+                    vehicleModelNo: document.getElementById('billVehicleModelNo').value.trim(),
+                    reference: document.getElementById('billReference').value.trim() || '',
+                    sellerDetails: sellerSettings,
+                    partyDetails: { name: document.getElementById('billPartyName').value.trim(), email: document.getElementById('billPartyEmail').value.trim(), address: document.getElementById('billPartyAddress').value.trim(), gstin: document.getElementById('billPartyGstin').value.trim().toUpperCase() },
+                    items, subTotal: calcSub, totalCGST: calcCgst, totalSGST: calcSgst, roundOff: finalRoundOff, grandTotal: finalGT, amountInWords: App.numberToWords(finalGT),
+                };
+                const billId = document.getElementById('billId').value;
+                try {
+                    const response = await apiRequest(billId ? `/bills/${billId}` : '/bills', billId ? 'PUT' : 'POST', billData);
+                    if (!billId && sellerSettings) { 
+                        const newNext = (parseInt(sellerSettings.nextBillNumber) || 0) + 1;
+                        try { 
+                           await apiRequest('/settings', 'POST', { ...sellerSettings, nextBillNumber: newNext });
+                           sellerSettings.nextBillNumber = newNext; 
+                        } catch (settingsError) { console.warn("Could not update next bill number in settings:", settingsError); }
+                    }
+                    App.showMessage(billId ? "Bill updated." : "Bill saved.");
+                    currentPreviewBillData = { ...billData, id: response.data?.id || billId };
+                    App.generateBillPreview(currentPreviewBillData.id, currentPreviewBillData);
+                    App.navigateTo('viewBillView', `Bill: ${currentPreviewBillData.billNumber}`); App.prepareNewBillForm(); App.loadBills(); App.loadProducts(1,'',true);
+                } finally { App.hideLoading(); }
+            },
+            loadBills: async () => { 
+                App.showLoading();
+                try {
+                    const response = await apiRequest('/bills');
+                    const billsData = response.data || [];
+                    const listEl = document.getElementById('billsListContainer'); listEl.innerHTML = '';
+                    if (billsData.length === 0) { listEl.innerHTML = '<p class="text-gray-500 p-3 text-center">No bills saved yet.</p>'; App.hideLoading(); return; } 
+                    billsData.sort((a,b) => new Date(b.date || 0) - new Date(a.date || 0) || (b.billNumber || '').localeCompare(a.billNumber || '')).forEach(bill => {
+                        const div = document.createElement('div'); div.className = 'p-4 bg-white border rounded-lg shadow-sm';
+                        const partyName = bill.partyDetails?.name || 'N/A';
+                        const billDate = bill.date ? new Date(bill.date).toLocaleDateString() : 'N/A';
+                        div.innerHTML = `<div class="flex justify-between items-center"><div class="mb-2 sm:mb-0"><p class="font-semibold text-indigo-700">Bill: ${bill.billNumber||'N/A'}</p><p class="text-sm">To: ${partyName} - Date: ${billDate}</p><p class="text-md font-bold">Total: ₹${(parseFloat(bill.grandTotal)||0).toFixed(2)}</p></div><div class="flex space-x-2"><button onclick="App.viewBill('${bill.id}')" class="text-green-500 p-1"><i class="fas fa-eye"></i></button><button onclick="App.editBill('${bill.id}')" class="text-blue-500 p-1"><i class="fas fa-edit"></i></button><button onclick="App.deleteBill('${bill.id}', '${(bill.billNumber||'this bill').replace(/'/g, "\\'")}')" class="text-red-500 p-1"><i class="fas fa-trash"></i></button></div></div>`;
+                        listEl.appendChild(div);
+                    });
+                } catch (error) { document.getElementById('billsListContainer').innerHTML = '<p class="text-red-500 p-3 text-center">Error loading bills.</p>'; console.error("Error loading bills:", error); }
+                finally { App.hideLoading(); }
+            },
+            viewBill: async (id) => { App.showLoading(); try { const response = await apiRequest(`/bills/${id}`); currentPreviewBillData = response.data; App.generateBillPreview(id, currentPreviewBillData); App.navigateTo('viewBillView', `Bill: ${currentPreviewBillData.billNumber}`); } finally { App.hideLoading(); } },
+            editBill: async (id) => {
+                App.showLoading();
+                try {
+                    const response = await apiRequest(`/bills/${id}`); const bill = response.data;
+                    if (bill) {
+                        document.getElementById('billId').value = bill.id;
+                        document.getElementById('billNumber').value = bill.billNumber || '';
+                        document.getElementById('billDate').value = bill.date ? bill.date.split('T')[0] : ''; 
+                        document.getElementById('billReference').value = bill.reference || '';
+                        document.getElementById('billVehicleModelNo').value = bill.vehicleModelNo || '';
+                        document.getElementById('billPartyName').value = bill.partyDetails?.name || '';
+                        document.getElementById('billPartyEmail').value = bill.partyDetails?.email || '';
+                        document.getElementById('billPartyAddress').value = bill.partyDetails?.address || '';
+                        document.getElementById('billPartyGstin').value = bill.partyDetails?.gstin || '';
+                        
+                        const itemsContainer = document.getElementById('billItemsContainer'); itemsContainer.innerHTML = ''; itemCounter = 0;
+                        (bill.items || []).forEach(item => App.addBillItem(item)); 
+                        App.updateBillSummary(); App.navigateTo('createBillView', `Edit Bill: ${bill.billNumber || 'N/A'}`);
+                    }
+                } finally { App.hideLoading(); }
+            },
+            deleteBill: async (id, name) => App.showConfirmation("Delete Bill", `Delete Bill No. "${name}"?`, async () => { App.showLoading(); try { await apiRequest(`/bills/${id}`, 'DELETE'); App.showMessage("Bill deleted."); App.loadBills(); if (currentView === 'viewBillView' && currentPreviewBillData?.id === id) App.navigateTo('billsListView'); } finally { App.hideLoading(); } }),
+            
+            generateBillPreview: (billId, billData) => {
+                const previewArea = document.getElementById('billPreviewArea');
+                previewArea.dataset.billId = billId;
+                currentPreviewBillData = { id: billId, ...billData }; 
+                const { sellerDetails={}, partyDetails={}, items=[], billNumber, date, reference, vehicleModelNo, subTotal=0, totalCGST=0, totalSGST=0, roundOff=0, grandTotal=0, amountInWords } = billData;
+
+                let itemsHtml = '';
+                (items || []).forEach((item, index) => { 
+                    const fullDescription = `${item.description || ''}${item.partNo ? `<br><span class="part-no">(Part No: ${item.partNo})</span>` : ''}`;
+                    itemsHtml += `
+                        <tr>
+                            <td class="text-center">${index + 1}</td>
+                            <td>${fullDescription}</td>
+                            <td class="text-center">${item.hsnSac || ''}</td>
+                            <td class="text-center">${item.quantity !== undefined ? item.quantity : ''}</td>
+                            <td class="text-right">${Number(item.unitPrice || 0).toFixed(2)}</td>
+                            <td class="text-center">${item.gstRate !== undefined ? Number(item.gstRate).toFixed(0) + '%' : ''}</td>
+                            <td class="text-right">${Number(item.taxableValue || 0).toFixed(2)}</td>
+                        </tr>`;
+                });
+
+                previewArea.innerHTML = `
+                    <div class="header-company-name">${sellerDetails.name || ''}</div>
+                    <div class="header-address">${sellerDetails.address || ''}</div>
+                    <div class="header-gstin">GSTIN/UIN: ${sellerDetails.gstin || ''}</div>
+                    <div class="tax-invoice-title">TAX INVOICE</div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 8px;">
+                        <div style="width: 60%;">
+                            <strong>Bill To:</strong><br>
+                            M/s: ${partyDetails.name || ''}<br>
+                            ${partyDetails.address ? `Address: ${partyDetails.address.replace(/\n/g, '<br>')}<br>` : ''}
+                            ${partyDetails.gstin ? `<strong>GSTIN/UIN: ${partyDetails.gstin}</strong>` : ''}
+                        </div>
+                        <div style="width: 38%;">
+                            <table style="width:100%; border:none;">
+                                <tr><td style="font-weight:bold; border:none;">Invoice No.:</td><td style="border:none;">${billNumber || ''}</td></tr>
+                                <tr><td style="font-weight:bold; border:none;">Dated:</td><td style="border:none;">${date ? new Date(date).toLocaleDateString('en-GB') : ''}</td></tr>
+                                ${vehicleModelNo ? `<tr><td style="font-weight:bold; border:none;">Model No.:</td><td style="border:none;">${vehicleModelNo}</td></tr>` : ''}
+                                ${reference ? `<tr><td style="font-weight:bold; border:none;">Vehicle No.:</td><td style="border:none;">${reference}</td></tr>` : ''}
+                            </table>
+                        </div>
+                    </div>
+                    <table class="item-table">
+                        <thead><tr><th style="width:3%">Sr.</th><th style="width:40%">Particulars</th><th>HSN/SAC</th><th style="width:5%">Qty</th><th style="width:10%">Rate</th><th style="width:8%">GST%</th><th style="width:12%">Amount</th></tr></thead>
+                        <tbody>${itemsHtml}</tbody>
+                    </table>
+                    <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 8px;">
+                        <div style="width: 65%;">
+                            <strong>Amount Chargeable (in words)</strong><br>
+                            ${amountInWords ? amountInWords + ' Only' : ''}
+                        </div>
+                        <div style="width: 33%;">
+                            <table style="width: 100%; border:none;">
+                                <tr><td style="text-align: right; border:none;">Sub Total:</td><td style="text-align: right; font-weight: bold; border:none;">${Number(subTotal).toFixed(2)}</td></tr>
+                                <tr><td style="text-align: right; border:none;">CGST:</td><td style="text-align: right; font-weight: bold; border:none;">${Number(totalCGST).toFixed(2)}</td></tr>
+                                <tr><td style="text-align: right; border:none;">SGST:</td><td style="text-align: right; font-weight: bold; border:none;">${Number(totalSGST).toFixed(2)}</td></tr>
+                                ${Number(roundOff) !== 0 ? `<tr><td style="text-align: right; border:none;">Round Off:</td><td style="text-align: right; font-weight: bold; border:none;">${Number(roundOff).toFixed(2)}</td></tr>` : ''}
+                                <tr style="font-size: 9px; font-weight:bold;"><td style="text-align: right; border-top:1px solid #333 !important; border:none;">GRAND TOTAL:</td><td style="text-align: right; border-top:1px solid #333 !important; border:none;">₹ ${Number(grandTotal).toFixed(2)}</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            },
+            downloadBillAsPdf: async () => { 
+                App.showLoading();
+                if (!currentPreviewBillData || !currentPreviewBillData.id) { App.showMessage("No bill selected.", true); App.hideLoading(); return; }
+                const billId = currentPreviewBillData.id;
+                try {
+                    const response = await fetch(`${API_BASE_URL}/bills/${billId}/download-pdf`);
+                    if (!response.ok) {
+                        const errorText = await response.text(); 
+                        throw new Error(`Server error: ${response.status} - ${errorText || response.statusText}`);
+                    }
+                    const pdfBlob = await response.blob();
+                    if (pdfBlob.type !== 'application/pdf') throw new Error("Server did not return a PDF file. Check server logs.");
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(pdfBlob);
+                    link.download = `Invoice-${String(currentPreviewBillData.billNumber || billId).replace(/[^a-z0-9_.-]/gi, '_')}.pdf`;
+                    document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(link.href);
+                } catch (err) { 
+                    console.error("PDF download error:", err); 
+                    App.showMessage(`PDF Download failed: ${err.message}.`, true); 
+                }
+                finally { App.hideLoading(); }
+            },
+            sendBillByEmail: async () => {
+                if (!currentPreviewBillData || !currentPreviewBillData.id) { App.showMessage("View a bill first.", true); return; }
+                const { id, partyDetails, billNumber } = currentPreviewBillData;
+                const toEmail = partyDetails?.email;
+                if (!toEmail) { App.showMessage("Party email missing.", true); return; }
+                const ccEmail = sellerSettings?.email || '';
+
+                App.showConfirmation("Confirm Email", `Send bill ${billNumber} to ${toEmail}${ccEmail ? ` (CC: ${ccEmail})` : ''}?`, async () => {
+                    App.showLoading();
+                    try {
+                        await apiRequest(`/bills/${id}/send-email`, 'POST', { to: toEmail, cc: ccEmail, subject: `Invoice ${billNumber} from ${sellerSettings?.name || 'Us'}` });
+                        App.showMessage("Email sent successfully.");
+                    } finally { App.hideLoading(); }
+                });
+            },
+            numberToWords: (num) => {
+                // Simplified number to words for brevity
+                return new ToWords().toWords(num);
+            },
+            navigateToDataMgmtMenu: () => { document.getElementById('dataMgmtModal').style.display = 'block'; },
+            closeDataMgmtModal: () => { document.getElementById('dataMgmtModal').style.display = 'none'; }
+        };
+
+        class ToWords { toWords(e){var r=this;let t="";return(t=this.convert(e))?t.replace(/  /g," ").trim().split(" ").map(w=>w[0].toUpperCase() + w.substring(1)).join(' '):"",t}convert(e){var r=this;if(e>999999999)return"overflow";let t=Math.floor(e);if(0===t)return e.toString().indexOf(".")<0?"zero":this.convertDecimals(e);let o=e.toString().indexOf(".");return-1!==o?this.convertNumber(t)+" and "+this.convertDecimals(e):this.convertNumber(t)}convertNumber(e){var r=this;if(e>=1e9)return this.convertNumber(Math.floor(e/1e9))+" billion "+this.convertNumber(e%1e9);if(e>=1e6)return this.convertNumber(Math.floor(e/1e6))+" million "+this.convertNumber(e%1e6);if(e>=1e3)return this.convertNumber(Math.floor(e/1e3))+" thousand "+this.convertNumber(e%1e3);if(e>=100)return this.convertNumber(Math.floor(e/100))+" hundred "+this.convertNumber(e%100);if(e>=20)return this.tens(e)+" "+this.ones(e);if(e>=1)return this.ones(e);return""}ones(e){var r=this;switch(Math.floor(e)){case 1:return"one";case 2:return"two";case 3:return"three";case 4:return"four";case 5:return"five";case 6:return"six";case 7:return"seven";case 8:return"eight";case 9:return"nine";case 10:return"ten";case 11:return"eleven";case 12:return"twelve";case 13:return"thirteen";case 14:return"fourteen";case 15:return"fifteen";case 16:return"sixteen";case 17:return"seventeen";case 18:return"eighteen";case 19:return"nineteen"}return""}tens(e){var r=this;let t=Math.floor(e);if(t>=90)return"ninety";if(t>=80)return"eighty";if(t>=70)return"seventy";if(t>=60)return"sixty";if(t>=50)return"fifty";if(t>=40)return"forty";if(t>=30)return"thirty";if(t>=20)return"twenty"}convertDecimals(e){var r=this;let t=e.toString(),o=t.indexOf(".");if(-1!==o){let a=t.substring(o+1);for(;a.length<2;)a+="0";return this.convertNumber(Number(a))+" paise"}}};
+
+        if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', App.init); }
+        else { App.init(); }
+        window.App = App;
+    </script>
+</body>
+</html>

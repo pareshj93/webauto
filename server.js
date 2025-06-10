@@ -1,0 +1,747 @@
+// --- server.js (Corrected with HSN/SAC Table Alignment Fix) ---
+require('dotenv').config();
+const express = require('express');
+const mysql = require('mysql2/promise');
+const cors = require('cors');
+const nodemailer = require('nodemailer');
+const PDFDocument = require('pdfkit');
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+const { ToWords } = require('to-words');
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+// --- Database Configuration & Initialization ---
+const dbConfig = {
+    host: process.env.DB_HOST || '193.203.184.87',
+    user: process.env.DB_USER || 'u420181319_Pjoshij',
+    password: process.env.DB_PASSWORD || 'YOUR_DATABASE_PASSWORD_HERE',
+    database: process.env.DB_NAME || 'u420181319_WEBAUTO',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    connectTimeout: 10000
+};
+
+let pool;
+async function initializeDatabasePool() {
+    try {
+        pool = mysql.createPool(dbConfig);
+        await pool.query('SELECT 1');
+        console.log('>>> initializeDatabasePool: Database connection successful.');
+        return true;
+    } catch (error) {
+        console.error("!!! initializeDatabasePool: DB POOL/CONNECTION ERROR !!!:", error.message);
+        if (pool) await pool.end();
+        pool = null;
+        return false;
+    }
+}
+
+// --- Middleware & Utilities ---
+app.use(cors({
+    origin: '*',
+    methods: 'GET,POST,PUT,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type,Authorization'
+}));
+app.use(express.json());
+const sendResponse = (res, statusCode, data, message, meta) => res.status(statusCode).json({ success: statusCode < 400, data, message, meta });
+app.use((req, res, next) => { if (!pool) return sendResponse(res, 503, null, "Database service unavailable."); next(); });
+
+// --- API Endpoints (CRUD operations for Settings, Parties, Products, Bills) ---
+app.get('/api/settings', async (req, res) => { try { const [rows] = await pool.query('SELECT * FROM seller_settings WHERE id = ? LIMIT 1', [1]); sendResponse(res, 200, rows[0] || {}); } catch (e) { console.error(e); sendResponse(res, 500, null, 'Failed to fetch settings.'); } });
+app.post('/api/settings', async (req, res) => { const d=req.body; try { const sql=`INSERT INTO seller_settings (id, name, address, gstin, email, companyLogoUrl, bankName, accountNo, ifsc, terms, nextBillNumber, nextBillNumberPrefix) VALUES (1,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),address=VALUES(address),gstin=VALUES(gstin),email=VALUES(email),companyLogoUrl=VALUES(companyLogoUrl),bankName=VALUES(bankName),accountNo=VALUES(accountNo),ifsc=VALUES(ifsc),terms=VALUES(terms),nextBillNumber=VALUES(nextBillNumber),nextBillNumberPrefix=VALUES(nextBillNumberPrefix)`; await pool.query(sql,[d.name,d.address,d.gstin,d.email,d.companyLogoUrl,d.bankName,d.accountNo,d.ifsc,d.terms,d.nextBillNumber,d.nextBillNumberPrefix]); sendResponse(res,200,d,'Settings saved.'); } catch(e){ console.error(e); sendResponse(res,500,null,'Failed to save settings.'); } });
+app.get('/api/parties', async (req, res) => { try { const [rows] = await pool.query('SELECT * FROM parties ORDER BY name ASC'); sendResponse(res, 200, rows); } catch (e) { console.error(e); sendResponse(res, 500, null, 'Failed to fetch parties.'); } });
+app.post('/api/parties', async (req, res) => { const d=req.body; try { const [e] = await pool.query('SELECT id FROM parties WHERE LOWER(name)=LOWER(?)',[d.name.trim()]); if(e.length>0)return sendResponse(res,409,null,'Party name already exists.'); const [r] = await pool.query('INSERT INTO parties (name,email,address,gstin) VALUES (?,?,?,?)',[d.name.trim(),d.email,d.address,d.gstin]); sendResponse(res, 201, {id:r.insertId,...d},'Party added.'); } catch(e){ console.error(e); sendResponse(res,500,null,'Failed to add party.'); } });
+app.put('/api/parties/:id', async (req, res) => { const d=req.body; const {id}=req.params; try { const [e]=await pool.query('SELECT id FROM parties WHERE LOWER(name)=LOWER(?) AND id!=?',[d.name.trim(),id]); if(e.length > 0)return sendResponse(res,409,null,'Another party with this name already exists.'); const [r]=await pool.query('UPDATE parties SET name=?,email=?,address=?,gstin=? WHERE id=?',[d.name.trim(),d.email,d.address,d.gstin,id]); if(r.affectedRows===0)return sendResponse(res,404,null,'Party not found.'); sendResponse(res,200,{id,...d},'Party updated.'); } catch (e){ console.error(e); sendResponse(res,500,null,'Failed to update party.'); } });
+app.delete('/api/parties/:id', async (req, res) => { try { const [r]=await pool.query('DELETE FROM parties WHERE id=?',[req.params.id]); if(r.affectedRows===0)return sendResponse(res,404,null,'Party not found.'); sendResponse(res,204); } catch (e){ console.error(e); sendResponse(res,500,null,'Failed to delete party.'); } });
+app.get('/api/products', async(req,res)=>{ const {search, page = 1, limit = 10} = req.query; const pN=parseInt(page), lN=parseInt(limit), off=(pN-1)*lN; let wc=[], qP=[]; if(search){ const sT=`%${search.toLowerCase()}%`; wc.push('(LOWER(description) LIKE ? OR LOWER(hsnSac) LIKE ? OR LOWER(partNo) LIKE ?)'); qP.push(sT, sT, sT); } const wS=wc.length>0?`WHERE ${wc.join(' AND ')}`:''; try{ const [[{total}]] = await pool.query(`SELECT COUNT(*) as total FROM products ${wS}`, qP); const tPg = Math.ceil(total/lN); const [p] = await pool.query(`SELECT * FROM products ${wS} ORDER BY description ASC LIMIT ? OFFSET ?`, [...qP, lN, off]); sendResponse(res, 200, p, null, {currentPage: pN, totalPages: tPg, totalItems: total}); } catch(e) { console.error(e); sendResponse(res, 500, null, 'Failed to fetch products.'); } });
+app.post('/api/products',async(req,res)=>{ const d=req.body; try { const[e]=await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?)',[d.description.trim()]); if(e.length>0) return sendResponse(res,409,null,'Product description already exists.'); const[r]=await pool.query('INSERT INTO products (description,hsnSac,unitPrice,gstRate,partNo) VALUES (?,?,?,?,?)',[d.description.trim(),d.hsnSac,d.unitPrice,d.gstRate,d.partNo || null]); sendResponse(res,201,{id:r.insertId,...d},'Product added.'); } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to add product.'); } });
+app.put('/api/products/:id',async(req,res)=>{ const d=req.body; const{id}=req.params; try { const[e]=await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?) AND id!=?',[d.description.trim(),id]); if(e.length>0) return sendResponse(res,409,null,'Another product with this name already exists.'); const[r]=await pool.query('UPDATE products SET description=?,hsnSac=?,unitPrice=?,gstRate=?,partNo=? WHERE id=?',[d.description.trim(),d.hsnSac,d.unitPrice,d.gstRate,d.partNo || null,id]); if(r.affectedRows===0) return sendResponse(res,404,null,'Product not found.'); sendResponse(res,200,{id,...d},'Product updated.'); } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to update product.'); } });
+app.delete('/api/products/:id',async(req,res)=>{try{const[r]=await pool.query('DELETE FROM products WHERE id=?',[req.params.id]);if(r.affectedRows===0)return sendResponse(res,404,null,'Product not found.');sendResponse(res,204);}catch(e){console.error(e);sendResponse(res,500,null,'Failed to delete party.');}});
+app.get('/api/bills',async(req,res)=>{try{const[r]=await pool.query('SELECT id,billNumber,date,partyDetails,grandTotal,vehicleModelNo FROM bills ORDER BY date DESC,id DESC');const b=r.map(i=>({...i,partyDetails:i.partyDetails?JSON.parse(i.partyDetails):{}}));sendResponse(res,200,b);}catch(e){console.error(e);sendResponse(res,500,null,'Failed to fetch bills.');}});
+app.get('/api/bills/:id',async(req,res)=>{try{const[[b]]=await pool.query('SELECT * FROM bills WHERE id=?',[req.params.id]);if(!b)return sendResponse(res,404,null,'Bill not found.');const[i]=await pool.query('SELECT * FROM bill_items WHERE bill_id=?',[req.params.id]);b.items=i;b.sellerDetails=JSON.parse(b.sellerDetails);b.partyDetails=JSON.parse(b.partyDetails);sendResponse(res,200,b);}catch(e){console.error(e);sendResponse(res,500,null,'Failed to fetch bill details.');}});
+app.post('/api/bills',async(req,res)=>{const d=req.body;let c;try{c=await pool.getConnection();await c.beginTransaction();const s=`INSERT INTO bills(billNumber,date,reference,vehicleModelNo,sellerDetails,partyDetails,subTotal,totalCGST,totalSGST,roundOff,grandTotal,amountInWords)VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`;const[r]=await c.query(s,[d.billNumber,d.date,d.reference,d.vehicleModelNo,JSON.stringify(d.sellerDetails),JSON.stringify(d.partyDetails),d.subTotal,d.totalCGST,d.totalSGST,d.roundOff,d.grandTotal,d.amountInWords]);const nId=r.insertId;if(d.items.length>0){ const iS=`INSERT INTO bill_items(bill_id,description,hsnSac,quantity,unitPrice,gstRate,taxableValue,cgstAmount,sgstAmount,totalAmount,removeRefitting,dentingAcGas,painting,partNo)VALUES ?`; const iV=d.items.map(i=>[nId,i.description,i.hsnSac,i.quantity,i.unitPrice,i.gstRate,i.taxableValue,i.cgstAmount,i.sgstAmount,i.totalAmount,i.removeRefitting,i.dentingAcGas,i.painting,i.partNo || null]);await c.query(iS,[iV]);}await c.commit();sendResponse(res,201,{id:nId,...d},'Bill created.');}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to create bill: ${e.message}`);}finally{if(c)c.release();}});
+app.put('/api/bills/:id',async(req,res)=>{const bId=req.params.id;const d=req.body;let c;try{c=await pool.getConnection();await c.beginTransaction();const u=`UPDATE bills SET billNumber=?,date=?,reference=?,vehicleModelNo=?,sellerDetails=?,partyDetails=?,subTotal=?,totalCGST=?,totalSGST=?,roundOff=?,grandTotal=?,amountInWords=? WHERE id=?`;await c.query(u,[d.billNumber,d.date,d.reference,d.vehicleModelNo,JSON.stringify(d.sellerDetails),JSON.stringify(d.partyDetails),d.subTotal,d.totalCGST,d.totalSGST,d.roundOff,d.grandTotal,d.amountInWords,bId]);await c.query('DELETE FROM bill_items WHERE bill_id=?',[bId]);if(d.items.length>0){ const iS=`INSERT INTO bill_items(bill_id,description,hsnSac,quantity,unitPrice,gstRate,taxableValue,cgstAmount,sgstAmount,totalAmount,removeRefitting,dentingAcGas,painting,partNo)VALUES ?`; const iV=d.items.map(i=>[bId,i.description,i.hsnSac,i.quantity,i.unitPrice,i.gstRate,i.taxableValue,i.cgstAmount,i.sgstAmount,i.totalAmount,i.removeRefitting,i.dentingAcGas,i.painting,i.partNo || null]);await c.query(iS,[iV]);}await c.commit();sendResponse(res,200,{id:bId,...d},'Bill updated.');}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to update bill: ${e.message}`);}finally{if(c)c.release();}});
+app.delete('/api/bills/:id',async(req,res)=>{let c;try{c=await pool.getConnection();await c.beginTransaction();await c.query('DELETE FROM bill_items WHERE bill_id=?',[req.params.id]);const[r]=await c.query('DELETE FROM bills WHERE id=?',[req.params.id]);if(r.affectedRows===0)return sendResponse(res,404,null,'Bill not found.');await c.commit();sendResponse(res,204);}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to delete bill: ${e.message}`);}finally{if(c)c.release();}});
+
+// ===================================================================================
+// =================== PDF GENERATION ENGINE (REVISED) ===============================
+// ===================================================================================
+
+const PDF_SETTINGS = {
+    MARGIN: { TOP: 25, BOTTOM: 25, LEFT: 35, RIGHT: 35 },
+    FONT: { NORMAL: 'Helvetica', BOLD: 'Helvetica-Bold' },
+    COLOR: { 
+        HEADER_TEXT: '#000000', 
+        INVOICE_TITLE: '#000000', 
+        SECTION_TITLE: '#34495E', 
+        TABLE_HEADER_BG: '#4A90E2', 
+        TABLE_HEADER_TEXT: '#FFFFFF', 
+        ROW_ALT_BG: '#F0F6FF', 
+        TEXT_DARK: '#212529', 
+        TEXT_MEDIUM: '#495057', 
+        BORDER_DARK: '#000000', 
+        BORDER_LIGHT: '#CCCCCC', 
+        ACCENT: '#4A90E2', 
+        GRAND_TOTAL_BG: '#EAF2F8' 
+    },
+    LOGO: {
+        MAX_WIDTH: 240,
+        MAX_HEIGHT: 100
+    }
+};
+
+async function generateBillPdfBuffer(billDetails, logoBuffer) {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({
+            size: 'A4',
+            margins: PDF_SETTINGS.MARGIN,
+            bufferPages: true,
+        });
+
+        const buffers = [];
+        doc.on('data', chunk => buffers.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(buffers)));
+        doc.on('error', reject);
+
+        try {
+            const context = { y: doc.page.margins.top };
+
+            doc.on('pageAdded', () => {
+                context.y = doc.page.margins.top;
+                drawHeader(doc, context, billDetails, null, false);
+            });
+            
+            drawHeader(doc, context, billDetails, logoBuffer, true);
+            drawBillPartyAndMetaInfo(doc, context, billDetails);
+            const itemTableConfig = getItemTableConfig(doc, billDetails);
+            drawItemTable(doc, context, itemTableConfig);
+
+            const totalsHeight = 120;
+            const hsnConfig = getHsnSummaryConfig(doc, billDetails, itemTableConfig.tableWidth);
+            const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig) : 0;
+            const summaryHeight = totalsHeight + hsnHeight; 
+
+            checkAndHandlePageBreak(doc, context, summaryHeight);
+            
+            drawTotalsSection(doc, context, billDetails);
+            if (hsnConfig) drawHsnSummary(doc, context, hsnConfig);
+            
+            finalizePages(doc, billDetails);
+            
+            doc.end();
+        } catch (e) {
+            console.error("[PDF Generation Error]", e.stack);
+            reject(e);
+        }
+    });
+}
+
+function drawHeader(doc, context, billDetails, logoBuffer, isFirstPage) {
+    const { sellerDetails } = billDetails;
+    const { MARGIN, FONT, COLOR, LOGO } = PDF_SETTINGS;
+
+    if (isFirstPage) {
+        context.y += 10;
+        doc.font(FONT.BOLD).fontSize(18).fillColor(COLOR.INVOICE_TITLE)
+           .text('TAX INVOICE', MARGIN.LEFT, context.y, {
+               width: doc.page.width - MARGIN.LEFT - MARGIN.RIGHT,
+               align: 'center'
+           });
+        context.y = doc.y + 15;
+
+        const headerStartY = context.y;
+        const logoX = MARGIN.LEFT;
+        const companyDetailsX = logoX + LOGO.MAX_WIDTH + 20;
+
+        let logoHeight = 0;
+        if (logoBuffer) {
+            doc.image(logoBuffer, logoX, headerStartY, {
+                fit: [LOGO.MAX_WIDTH, LOGO.MAX_HEIGHT],
+                align: 'left', valign: 'top'
+            });
+            logoHeight = LOGO.MAX_HEIGHT;
+        }
+
+        let tempY = headerStartY;
+        const dryRunDoc = doc;
+        dryRunDoc.font(FONT.BOLD).fontSize(14);
+        tempY += dryRunDoc.heightOfString(sellerDetails.name || "", { width: doc.page.width - companyDetailsX - MARGIN.RIGHT }) + 5;
+        dryRunDoc.font(FONT.NORMAL).fontSize(9);
+        tempY += dryRunDoc.heightOfString(sellerDetails.address || "", { width: doc.page.width - companyDetailsX - MARGIN.RIGHT }) + 5;
+        if (sellerDetails.gstin) {
+            tempY += dryRunDoc.heightOfString(`GSTIN/UIN: ${sellerDetails.gstin}`, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
+        }
+        const textBlockHeight = tempY - headerStartY;
+
+        const companyDetailsY = headerStartY + (logoHeight / 2) - (textBlockHeight / 2);
+        let currentY = companyDetailsY > headerStartY ? companyDetailsY : headerStartY;
+
+        doc.font(FONT.BOLD).fontSize(14).fillColor(COLOR.HEADER_TEXT)
+           .text(sellerDetails.name || "", companyDetailsX, currentY, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
+        doc.font(FONT.NORMAL).fontSize(9).fillColor(COLOR.TEXT_MEDIUM);
+        doc.text(sellerDetails.address || "", companyDetailsX, doc.y + 5, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
+        if (sellerDetails.gstin) {
+            doc.text(`GSTIN/UIN: ${sellerDetails.gstin}`, companyDetailsX, doc.y + 5, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
+        }
+
+        context.y = headerStartY + Math.max(logoHeight, textBlockHeight) + 25;
+
+    } else {
+        doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_MEDIUM)
+           .text(`Invoice Continued: ${billDetails.billNumber}`, MARGIN.LEFT, context.y, {
+               width: doc.page.width - MARGIN.LEFT - MARGIN.RIGHT,
+               align: 'center'
+           });
+        context.y = doc.y + 20;
+    }
+}
+
+function drawBillPartyAndMetaInfo(doc, context, billDetails) {
+    const { partyDetails } = billDetails;
+    const sectionStartY = context.y;
+    const rightColumnX = doc.page.width / 2 + 20;
+
+    let leftY = sectionStartY;
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(10).fillColor(PDF_SETTINGS.COLOR.SECTION_TITLE)
+       .text('Buyer (Bill to)', PDF_SETTINGS.MARGIN.LEFT, leftY);
+    leftY += 15;
+
+    doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM);
+    
+    if (partyDetails.name) { doc.text(partyDetails.name, PDF_SETTINGS.MARGIN.LEFT, leftY, { width: doc.page.width / 2 - 50 }); leftY = doc.y + 5; }
+    if (partyDetails.gstin) { doc.text(`GSTIN/UIN: ${partyDetails.gstin}`, PDF_SETTINGS.MARGIN.LEFT, leftY); leftY = doc.y + 5; }
+    doc.text(`State Name: Gujarat, Code: 24`, PDF_SETTINGS.MARGIN.LEFT, leftY);
+    const leftColumnBottom = doc.y;
+
+    let rightY = sectionStartY;
+    const labelWidth = 80;
+    const valueWidth = 120;
+    const metaData = [
+        { label: 'Invoice No.', value: billDetails.billNumber },
+        { label: 'Dated', value: billDetails.date ? new Date(billDetails.date).toLocaleDateString('en-GB') : '' },
+        { label: 'Vehicle No.', value: billDetails.reference },
+        { label: 'Model No.', value: billDetails.vehicleModelNo },
+    ];
+    
+    metaData.forEach(row => {
+        if (!row.value) return; 
+        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK)
+           .text(row.label, rightColumnX, rightY, { width: labelWidth, align: 'left' });
+        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM)
+           .text(`: ${row.value}`, rightColumnX + labelWidth, rightY, { width: valueWidth, align: 'left' });
+        rightY += 15;
+    });
+    const rightColumnBottom = rightY;
+    
+    context.y = Math.max(leftColumnBottom, rightColumnBottom) + 25;
+}
+
+function drawPageBorder(doc) {
+    const {left, top, right, bottom} = doc.page.margins;
+    doc.rect(left, top, doc.page.width - left - right, doc.page.height - top - bottom)
+       .stroke(PDF_SETTINGS.COLOR.BORDER_DARK);
+}
+
+function drawPageNumber(doc, currentPage, totalPages) {
+    const { MARGIN, FONT } = PDF_SETTINGS;
+    doc.font(FONT.NORMAL).fontSize(8).fillColor("#777")
+       .text(`Page ${currentPage} of ${totalPages}`, 
+             MARGIN.LEFT, 
+             doc.page.height - MARGIN.BOTTOM + 10, 
+             { align: 'center' });
+}
+
+function drawFooterContent(doc, billDetails) {
+    const { sellerDetails } = billDetails;
+    const { MARGIN, FONT, COLOR } = PDF_SETTINGS;
+
+    const pageBottom = doc.page.height - MARGIN.BOTTOM;
+    const footerStartY = pageBottom - 100;
+
+    const signatureX = doc.page.width - MARGIN.RIGHT - 180;
+    doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_DARK)
+       .text(`For ${sellerDetails.name || ''}`, signatureX, footerStartY + 45, { width: 180, align: 'center' });
+    doc.font(FONT.NORMAL).fontSize(8).fillColor(COLOR.TEXT_MEDIUM)
+       .text('Authorised Signatory', signatureX, footerStartY + 75, { width: 180, align: 'center' });
+
+    const leftColumnX = MARGIN.LEFT;
+    const leftColumnWidth = doc.page.width - MARGIN.LEFT - MARGIN.RIGHT - 200;
+
+    const { bankName, accountNo, ifsc } = sellerDetails;
+    if (bankName || accountNo || ifsc) {
+        doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_DARK)
+           .text('Bank Details', leftColumnX, footerStartY, { width: leftColumnWidth });
+        
+        doc.font(FONT.NORMAL).fontSize(8).fillColor(COLOR.TEXT_MEDIUM);
+        if (bankName) doc.text(`Bank Name: ${bankName}`, { width: leftColumnWidth });
+        if (accountNo) doc.text(`A/c No.: ${accountNo}`, { width: leftColumnWidth });
+        if (ifsc) doc.text(`IFSC Code: ${ifsc}`, { width: leftColumnWidth });
+        doc.moveDown(1);
+    }
+
+    doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_DARK)
+        .text('Terms & Conditions', leftColumnX, doc.y, { width: leftColumnWidth });
+    doc.font(FONT.NORMAL).fontSize(8).fillColor(COLOR.TEXT_MEDIUM)
+       .text('1. Goods once sold will not be taken back. 2. Interest @18% p.a. will be charged on overdue bills. 3. Subject to local jurisdiction.',
+             leftColumnX, doc.y, { width: leftColumnWidth });
+}
+
+function finalizePages(doc, billDetails) {
+    const totalPages = doc.bufferedPageRange().count;
+    for (let i = 0; i < totalPages; i++) {
+        doc.switchToPage(i);
+        drawPageBorder(doc);
+        if (i === totalPages - 1) {
+            drawFooterContent(doc, billDetails);
+        }
+        drawPageNumber(doc, i + 1, totalPages);
+    }
+}
+
+function checkAndHandlePageBreak(doc, context, neededHeight) {
+    const pageBottom = doc.page.height - doc.page.margins.bottom;
+    const footerHeight = 150; // Reserve space for footer
+    if (context.y + neededHeight > pageBottom - footerHeight) {
+        doc.addPage();
+    }
+}
+
+function drawItemTable(doc, context, config) {
+    const { headers, rows, colWidths, tableWidth } = config;
+    const headerHeight = 25;
+
+    const drawTableHeader = () => {
+        doc.rect(PDF_SETTINGS.MARGIN.LEFT, context.y, tableWidth, headerHeight)
+           .fill(PDF_SETTINGS.COLOR.TABLE_HEADER_BG);
+        let currentX = PDF_SETTINGS.MARGIN.LEFT;
+        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TABLE_HEADER_TEXT);
+        headers.forEach((header, i) => {
+            doc.text(header.text, currentX + 5, context.y + 8, { width: colWidths[i] - 10, align: header.align || 'left' });
+            if (i < headers.length - 1) {
+                doc.moveTo(currentX + colWidths[i], context.y)
+                   .lineTo(currentX + colWidths[i], context.y + headerHeight)
+                   .strokeColor('#FFFFFF').lineWidth(0.5).stroke();
+            }
+            currentX += colWidths[i];
+        });
+        context.y += headerHeight;
+    };
+
+    drawTableHeader();
+
+    rows.forEach((rowData, index) => {
+        const rowHeight = Math.max(20, doc.heightOfString(String(rowData.values[0]), { width: colWidths[0] - 10}) + 10);
+        
+        checkAndHandlePageBreak(doc, context, rowHeight);
+        if (context.y + rowHeight > doc.page.height - doc.page.margins.bottom - 150) { // Check space before drawing
+             doc.addPage();
+             drawTableHeader();
+        }
+
+        const rowY = context.y;
+        if (index % 2) { 
+            doc.rect(PDF_SETTINGS.MARGIN.LEFT, rowY, tableWidth, rowHeight).fill(PDF_SETTINGS.COLOR.ROW_ALT_BG);
+        }
+        
+        let currentX = PDF_SETTINGS.MARGIN.LEFT;
+        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+        rowData.values.forEach((cell, i) => {
+            doc.text(String(cell || ''), currentX + 5, rowY + 5, { width: colWidths[i] - 10, align: headers[i].align || 'left' });
+            currentX += colWidths[i];
+        });
+        doc.moveTo(PDF_SETTINGS.MARGIN.LEFT, context.y + rowHeight)
+           .lineTo(PDF_SETTINGS.MARGIN.LEFT + tableWidth, context.y + rowHeight)
+           .strokeColor(PDF_SETTINGS.COLOR.BORDER_LIGHT).lineWidth(0.5).stroke();
+        context.y += rowHeight;
+    });
+    context.y += 10;
+}
+
+function getTableHeight(doc, config) {
+    if (!config) return 0;
+    let height = 0;
+    if (config.title) height += 35; // Title height
+    height += config.isComplexHeader ? 35 : 25; // Header height
+    config.rows.forEach(row => {
+        // Estimate row height based on the first column which usually has wrapped text
+        const cellText = String(row.values[0] || '');
+        const textHeight = doc.heightOfString(cellText, { width: config.colWidths[0] - 10 }); // 10 for padding
+        height += Math.max(20, textHeight + 10); // Minimum row height 20, plus padding
+    });
+    if (config.footer) height += 25; // Footer height
+    return height;
+}
+
+function getItemTableConfig(doc, billDetails) {
+    const headers = [
+        { text: "Description of Goods", widthRatio: 0.38, align: 'left' },
+        { text: "HSN/SAC", widthRatio: 0.12, align: 'left' },
+        { text: "Quantity", widthRatio: 0.10, align: 'center' },
+        { text: "Rate", widthRatio: 0.12, align: 'right' },
+        { text: "GST %", widthRatio: 0.10, align: 'center' },
+        { text: "Amount", widthRatio: 0.18, align: 'right' }
+    ];
+    
+    const tableWidth = doc.page.width - PDF_SETTINGS.MARGIN.LEFT - PDF_SETTINGS.MARGIN.RIGHT;
+    const colWidths = headers.map(h => h.widthRatio * tableWidth);
+    
+    const rows = billDetails.items.map((item, index) => {
+        const fullDescription = `${index + 1}. ${item.description || ''}${item.partNo ? `\n(Part No: ${item.partNo})` : ''}`;
+        return {
+            values: [
+                fullDescription,
+                item.hsnSac || '',
+                item.quantity ? `${item.quantity} Qty` : '',
+                Number(item.unitPrice || 0).toFixed(2),
+                item.gstRate ? `${item.gstRate}%` : '0%',
+                Number(item.taxableValue || 0).toFixed(2)
+            ]
+        }
+    });
+    
+    return { headers, rows, colWidths, tableWidth };
+}
+
+function drawTotalsSection(doc, context, billDetails) {
+    const { subTotal, totalCGST, totalSGST, grandTotal } = billDetails;
+    const roundOff = Number(billDetails.roundOff || 0);
+
+    const totalsY = context.y;
+    const labelWidth = 100;
+    const valueWidth = 80;
+    const valueX = doc.page.width - PDF_SETTINGS.MARGIN.RIGHT - valueWidth;
+    const labelX = valueX - labelWidth;
+
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+    doc.text('Description', labelX, totalsY);
+    doc.text('Amount', valueX, totalsY, { width: valueWidth, align: 'right' });
+    context.y += 15;
+
+    const addTaxRow = (label, value) => {
+        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+        doc.text(label, labelX, context.y, { width: labelWidth, align: 'left' });
+        doc.text(Number(value || 0).toFixed(2), valueX, context.y, { width: valueWidth, align: 'right' });
+        context.y += 12;
+    };
+
+    addTaxRow('Sub Total:', subTotal);
+    if (totalCGST > 0) addTaxRow('CGST', totalCGST);
+    if (totalSGST > 0) addTaxRow('SGST', totalSGST);
+    if (roundOff.toFixed(2) !== '0.00') addTaxRow('Round Off:', roundOff);
+    
+    context.y += 5;
+    doc.rect(labelX - 10, context.y, labelWidth + valueWidth + 20, 25).fill(PDF_SETTINGS.COLOR.GRAND_TOTAL_BG);
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(11).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+    doc.text('TOTAL', labelX, context.y + 5, { width: labelWidth, align: 'left' });
+    doc.text(Number(grandTotal || 0).toFixed(2), valueX, context.y + 5, { width: valueWidth, align: 'right' });
+    context.y += 30;
+    
+    const amountInWordsY = totalsY + 5;
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+    doc.text('Amount Chargeable (in words)', PDF_SETTINGS.MARGIN.LEFT, amountInWordsY);
+    
+    doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM);
+    doc.text(`${billDetails.amountInWords || ''} Only`, PDF_SETTINGS.MARGIN.LEFT, amountInWordsY + 12, { width: labelX - PDF_SETTINGS.MARGIN.LEFT - 20});
+    
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK)
+       .text('E. & O.E', doc.page.width - PDF_SETTINGS.MARGIN.RIGHT - 50, context.y - 15, { align: 'right'});
+    
+    context.y += 10;
+}
+
+// ===================================================================================
+// =================== HSN SUMMARY TABLE (REWRITTEN FOR ALIGNMENT) ===================
+// ===================================================================================
+
+function getHsnSummaryConfig(doc, billDetails, tableWidth) {
+    const { items } = billDetails;
+    if (!items || items.length === 0) return null;
+    
+    const hsnSummaryData = {};
+    items.forEach(item => {
+        const hsn = String(item.hsnSac || 'N/A');
+        if (!hsnSummaryData[hsn]) {
+            hsnSummaryData[hsn] = { taxableValue: 0, cgstAmount: 0, sgstAmount: 0, gstRate: item.gstRate };
+        }
+        hsnSummaryData[hsn].taxableValue += Number(item.taxableValue || 0);
+        hsnSummaryData[hsn].cgstAmount += Number(item.cgstAmount || 0);
+        hsnSummaryData[hsn].sgstAmount += Number(item.sgstAmount || 0);
+    });
+    
+    const colWidths = [0.18, 0.20, 0.20, 0.20, 0.22].map(w => w * tableWidth);
+
+    const rows = Object.entries(hsnSummaryData).map(([hsn, data]) => ({
+        values: [
+            hsn,
+            data.taxableValue.toFixed(2),
+            { rate: `${(data.gstRate / 2).toFixed(1)}%`, amount: data.cgstAmount.toFixed(2) },
+            { rate: `${(data.gstRate / 2).toFixed(1)}%`, amount: data.sgstAmount.toFixed(2) },
+            (data.cgstAmount + data.sgstAmount).toFixed(2)
+        ]
+    }));
+
+    const hsnTotals = Object.values(hsnSummaryData).reduce((acc, data) => ({
+        taxableValue: acc.taxableValue + data.taxableValue,
+        cgstAmount: acc.cgstAmount + data.cgstAmount,
+        sgstAmount: acc.sgstAmount + data.sgstAmount,
+        totalTax: acc.totalTax + data.cgstAmount + data.sgstAmount
+    }), { taxableValue: 0, cgstAmount: 0, sgstAmount: 0, totalTax: 0 });
+
+    const footer = [
+        "TOTAL",
+        hsnTotals.taxableValue.toFixed(2),
+        hsnTotals.cgstAmount.toFixed(2),
+        hsnTotals.sgstAmount.toFixed(2),
+        hsnTotals.totalTax.toFixed(2)
+    ];
+
+    return { rows, colWidths, footer, title: "HSN/SAC Summary", isComplexHeader: true, tableWidth };
+}
+
+
+function drawHsnSummary(doc, context, config) {
+    if (!config) return;
+
+    checkAndHandlePageBreak(doc, context, getTableHeight(doc, config) + 40);
+    
+    context.y += 15;
+    
+    const { rows, colWidths, footer, tableWidth, title } = config;
+
+    // Calculate the starting X to center the table on the page
+    const startX = (doc.page.width - tableWidth) / 2;
+
+    // Draw the title centered above the table
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(10).fillColor(PDF_SETTINGS.COLOR.SECTION_TITLE)
+       .text(title, startX, context.y, {
+           width: tableWidth,
+           align: 'center'
+       });
+    context.y += 25; // Increased space after title
+
+
+    const cellPadding = 5;
+    const headerHeight = 35;
+    const rowHeight = 20;
+    
+    // --- Draw Header ---
+    const headerY = context.y;
+    doc.rect(startX, headerY, tableWidth, headerHeight).fill(PDF_SETTINGS.COLOR.TABLE_HEADER_BG);
+    doc.fillColor(PDF_SETTINGS.COLOR.TABLE_HEADER_TEXT).font(PDF_SETTINGS.FONT.BOLD).fontSize(8);
+
+    let currentX = startX;
+    
+    doc.text('HSN/SAC', currentX, headerY + 12, { width: colWidths[0], align: 'center' });
+    currentX += colWidths[0];
+    doc.text('Taxable\nValue', currentX, headerY + 5, { width: colWidths[1], align: 'center' });
+    currentX += colWidths[1];
+
+    const centralTaxX = currentX;
+    doc.text('Central Tax', centralTaxX, headerY + 5, { width: colWidths[2], align: 'center' });
+    doc.text('Rate', centralTaxX, headerY + 18, { width: colWidths[2] / 2, align: 'center' });
+    doc.text('Amount', centralTaxX + colWidths[2] / 2, headerY + 18, { width: colWidths[2] / 2, align: 'center' });
+    currentX += colWidths[2];
+
+    const stateTaxX = currentX;
+    doc.text('State Tax', stateTaxX, headerY + 5, { width: colWidths[3], align: 'center' });
+    doc.text('Rate', stateTaxX, headerY + 18, { width: colWidths[3] / 2, align: 'center' });
+    doc.text('Amount', stateTaxX + colWidths[3] / 2, headerY + 18, { width: colWidths[3] / 2, align: 'center' });
+    currentX += colWidths[3];
+    
+    doc.text('Total Tax\nAmount', currentX, headerY + 5, { width: colWidths[4], align: 'center' });
+
+    context.y += headerHeight;
+
+    // --- Draw Rows ---
+    rows.forEach((rowData, index) => {
+        const rowY = context.y;
+        if (index % 2) {
+            doc.rect(startX, rowY, tableWidth, rowHeight).fill(PDF_SETTINGS.COLOR.ROW_ALT_BG);
+        }
+        
+        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(8).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+        currentX = startX;
+
+        doc.text(String(rowData.values[0] || ''), currentX + cellPadding, rowY + 6, { width: colWidths[0] - (cellPadding * 2), align: 'center' });
+        currentX += colWidths[0];
+
+        doc.text(String(rowData.values[1] || ''), currentX + cellPadding, rowY + 6, { width: colWidths[1] - (cellPadding * 2), align: 'center' });
+        currentX += colWidths[1];
+
+        doc.text(String(rowData.values[2].rate || ''), currentX, rowY + 6, { width: colWidths[2] / 2, align: 'center' });
+        doc.text(String(rowData.values[2].amount || ''), currentX + colWidths[2] / 2, rowY + 6, { width: colWidths[2] / 2 - cellPadding, align: 'right' });
+        currentX += colWidths[2];
+
+        doc.text(String(rowData.values[3].rate || ''), currentX, rowY + 6, { width: colWidths[3] / 2, align: 'center' });
+        doc.text(String(rowData.values[3].amount || ''), currentX + colWidths[3] / 2, rowY + 6, { width: colWidths[3] / 2 - cellPadding, align: 'right' });
+        currentX += colWidths[3];
+
+        doc.text(String(rowData.values[4] || ''), currentX + cellPadding, rowY + 6, { width: colWidths[4] - (cellPadding * 2), align: 'center' });
+
+        doc.moveTo(startX, rowY + rowHeight).lineTo(startX + tableWidth, rowY + rowHeight).stroke(PDF_SETTINGS.COLOR.BORDER_LIGHT);
+        context.y += rowHeight;
+    });
+
+    // --- Draw Footer ---
+    const footerY = context.y;
+    const footerHeight = 22;
+    doc.rect(startX, footerY, tableWidth, footerHeight).fill(PDF_SETTINGS.COLOR.TABLE_HEADER_BG);
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TABLE_HEADER_TEXT);
+    
+    currentX = startX;
+
+    doc.text(String(footer[0] || ''), currentX + cellPadding, footerY + 7, { width: colWidths[0] - (cellPadding * 2), align: 'center' });
+    currentX += colWidths[0];
+    
+    doc.text(String(footer[1] || ''), currentX + cellPadding, footerY + 7, { width: colWidths[1] - (cellPadding * 2), align: 'center' });
+    currentX += colWidths[1];
+
+    doc.text(String(footer[2] || ''), currentX + colWidths[2]/2, footerY + 7, { width: colWidths[2]/2 - cellPadding, align: 'right' });
+    currentX += colWidths[2];
+
+    doc.text(String(footer[3] || ''), currentX + colWidths[3]/2, footerY + 7, { width: colWidths[3]/2 - cellPadding, align: 'right' });
+    currentX += colWidths[3];
+    
+    doc.text(String(footer[4] || ''), currentX + cellPadding, footerY + 7, { width: colWidths[4] - (cellPadding * 2), align: 'center' });
+
+    context.y += footerHeight;
+}
+
+// ===================================================================================
+// =================== END OF HSN SUMMARY TABLE REWRITE ==============================
+// ===================================================================================
+
+
+async function getLogoBuffer(url) {
+    if (!url) return null;
+    try {
+        if (url.startsWith('http')) {
+            const response = await axios.get(url, { responseType: 'arraybuffer' });
+            return response.data;
+        } else {
+            const localPath = path.isAbsolute(url) ? url : path.join(__dirname, 'public', url);
+            if (fs.existsSync(localPath)) {
+                return fs.readFileSync(localPath);
+            }
+        }
+    } catch (error) {
+        console.error(`Failed to get logo from ${url}:`, error.message);
+    }
+    return null;
+}
+
+// --- PDF Download Endpoint ---
+app.get('/api/bills/:id/download-pdf', async (req, res) => {
+    try {
+        const [billRows] = await pool.query('SELECT * FROM bills WHERE id = ?', [req.params.id]);
+        if (billRows.length === 0) return sendResponse(res, 404, null, 'Bill not found.');
+        
+        let billData = billRows[0];
+        billData.sellerDetails = JSON.parse(billData.sellerDetails || '{}');
+        billData.partyDetails = JSON.parse(billData.partyDetails || '{}');
+        const [itemRows] = await pool.query('SELECT * FROM bill_items WHERE bill_id = ?', [req.params.id]);
+        billData.items = itemRows || [];
+        
+        const logoUrl = billData.sellerDetails.companyLogoUrl || "https://jetsetbranding.com/Webauto.jpg";
+        const logoBuffer = await getLogoBuffer(logoUrl);
+
+        const pdfBuffer = await generateBillPdfBuffer(billData, logoBuffer);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        const sanitizedBillNumber = String(billData.billNumber || req.params.id).replace(/[^a-z0-9_.-]/gi, '_');
+        res.setHeader('Content-Disposition', `attachment; filename="Invoice-${sanitizedBillNumber}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error(`--- ERROR generating PDF for download for bill ${req.params.id} ---:`, error.stack);
+        res.status(500).type('text/plain').send(`Failed to generate PDF. Error: ${error.message}`);
+    }
+});
+
+// --- Send Email API ---
+app.post('/api/bills/:id/send-email', async (req, res) => {
+    try {
+        const { to, cc, subject } = req.body;
+        const billId = req.params.id;
+
+        if (!to) return sendResponse(res, 400, null, 'Recipient email is required.');
+
+        const [billRows] = await pool.query('SELECT * FROM bills WHERE id = ?', [billId]);
+        if (billRows.length === 0) return sendResponse(res, 404, null, 'Bill not found.');
+
+        let billData = billRows[0];
+        billData.sellerDetails = JSON.parse(billData.sellerDetails || '{}');
+        billData.partyDetails = JSON.parse(billData.partyDetails || '{}');
+        const [itemRows] = await pool.query('SELECT * FROM bill_items WHERE bill_id = ?', [req.params.id]);
+        billData.items = itemRows || [];
+
+        const logoUrl = billData.sellerDetails.companyLogoUrl || "https://jetsetbranding.com/Webauto.jpg";
+        const logoBuffer = await getLogoBuffer(logoUrl);
+        const pdfBuffer = await generateBillPdfBuffer(billData, logoBuffer);
+
+        const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST,
+            port: process.env.SMTP_PORT,
+            secure: process.env.SMTP_SECURE === 'true',
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS,
+            },
+        });
+
+        const mailOptions = {
+            from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
+            to: to,
+            cc: cc,
+            subject: subject || `Invoice from ${billData.sellerDetails.name}`,
+            html: `Please find your invoice attached.`,
+            attachments: [{
+                filename: `Invoice-${billData.billNumber}.pdf`,
+                content: pdfBuffer,
+                contentType: 'application/pdf',
+            }],
+        };
+
+        await transporter.sendMail(mailOptions);
+        sendResponse(res, 200, null, 'Email sent successfully.');
+
+    } catch (error) {
+        console.error(`--- ERROR sending email for bill ${req.params.id} ---:`, error.stack);
+        res.status(500).type('text/plain').send(`Failed to send email. Error: ${error.message}`);
+    }
+});
+
+// --- Server Startup ---
+async function startServer() {
+    console.log(">>> startServer: Function started.");
+    if (!await initializeDatabasePool()) {
+        console.error(">>> startServer: FATAL - DB pool failed to initialize. Server cannot start.");
+        process.exit(1);
+    }
+    const server = app.listen(port, () => console.log(`Backend server running at http://localhost:${port}`));
+    server.on('error', (error) => {
+        if (error.syscall !== 'listen') throw error;
+        const bind = `Port ${port}`;
+        switch (error.code) {
+            case 'EACCES': console.error(`${bind} requires elevated privileges.`); process.exit(1); break;
+            case 'EADDRINUSE': console.error(`${bind} is already in use.`); process.exit(1); break;
+            default: throw error;
+        }
+    });
+    process.on('SIGINT', async () => {
+        console.log('>>> SIGINT: Closing server...');
+        server.close(async () => {
+            if (pool) { await pool.end(); console.log('>>> SIGINT: Database pool closed.'); }
+            console.log('>>> SIGINT: Server closed.');
+            process.exit(0);
+        });
+    });
+}
+
+startServer().catch(err => {
+    console.error("!!! FATAL ERROR DURING SERVER STARTUP SEQUENCE !!!", err.stack);
+    process.exit(1);
+});
