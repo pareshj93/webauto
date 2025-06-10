@@ -1,4 +1,4 @@
-// --- server.js (Corrected with HSN/SAC Table Alignment Fix) ---
+// --- server.js (Final Version with Enhanced Logging) ---
 require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
@@ -52,19 +52,54 @@ app.use((req, res, next) => { if (!pool) return sendResponse(res, 503, null, "Da
 
 // --- API Endpoints (CRUD operations for Settings, Parties, Products, Bills) ---
 app.get('/api/settings', async (req, res) => { try { const [rows] = await pool.query('SELECT * FROM seller_settings WHERE id = ? LIMIT 1', [1]); sendResponse(res, 200, rows[0] || {}); } catch (e) { console.error(e); sendResponse(res, 500, null, 'Failed to fetch settings.'); } });
-app.post('/api/settings', async (req, res) => { const d=req.body; try { const sql=`INSERT INTO seller_settings (id, name, address, gstin, email, companyLogoUrl, bankName, accountNo, ifsc, terms, nextBillNumber, nextBillNumberPrefix) VALUES (1,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),address=VALUES(address),gstin=VALUES(gstin),email=VALUES(email),companyLogoUrl=VALUES(companyLogoUrl),bankName=VALUES(bankName),accountNo=VALUES(accountNo),ifsc=VALUES(ifsc),terms=VALUES(terms),nextBillNumber=VALUES(nextBillNumber),nextBillNumberPrefix=VALUES(nextBillNumberPrefix)`; await pool.query(sql,[d.name,d.address,d.gstin,d.email,d.companyLogoUrl,d.bankName,d.accountNo,d.ifsc,d.terms,d.nextBillNumber,d.nextBillNumberPrefix]); sendResponse(res,200,d,'Settings saved.'); } catch(e){ console.error(e); sendResponse(res,500,null,'Failed to save settings.'); } });
+app.post('/api/settings', async (req, res) => {
+    console.log('--- API HIT: Saving Settings ---');
+    const d=req.body; try { const sql=`INSERT INTO seller_settings (id, name, address, gstin, email, companyLogoUrl, bankName, accountNo, ifsc, terms, nextBillNumber, nextBillNumberPrefix) VALUES (1,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),address=VALUES(address),gstin=VALUES(gstin),email=VALUES(email),companyLogoUrl=VALUES(companyLogoUrl),bankName=VALUES(bankName),accountNo=VALUES(accountNo),ifsc=VALUES(ifsc),terms=VALUES(terms),nextBillNumber=VALUES(nextBillNumber),nextBillNumberPrefix=VALUES(nextBillNumberPrefix)`; await pool.query(sql,[d.name,d.address,d.gstin,d.email,d.companyLogoUrl,d.bankName,d.accountNo,d.ifsc,d.terms,d.nextBillNumber,d.nextBillNumberPrefix]); sendResponse(res,200,d,'Settings saved.'); } catch(e){ console.error(e); sendResponse(res,500,null,'Failed to save settings.'); } });
 app.get('/api/parties', async (req, res) => { try { const [rows] = await pool.query('SELECT * FROM parties ORDER BY name ASC'); sendResponse(res, 200, rows); } catch (e) { console.error(e); sendResponse(res, 500, null, 'Failed to fetch parties.'); } });
-app.post('/api/parties', async (req, res) => { const d=req.body; try { const [e] = await pool.query('SELECT id FROM parties WHERE LOWER(name)=LOWER(?)',[d.name.trim()]); if(e.length>0)return sendResponse(res,409,null,'Party name already exists.'); const [r] = await pool.query('INSERT INTO parties (name,email,address,gstin) VALUES (?,?,?,?)',[d.name.trim(),d.email,d.address,d.gstin]); sendResponse(res, 201, {id:r.insertId,...d},'Party added.'); } catch(e){ console.error(e); sendResponse(res,500,null,'Failed to add party.'); } });
-app.put('/api/parties/:id', async (req, res) => { const d=req.body; const {id}=req.params; try { const [e]=await pool.query('SELECT id FROM parties WHERE LOWER(name)=LOWER(?) AND id!=?',[d.name.trim(),id]); if(e.length > 0)return sendResponse(res,409,null,'Another party with this name already exists.'); const [r]=await pool.query('UPDATE parties SET name=?,email=?,address=?,gstin=? WHERE id=?',[d.name.trim(),d.email,d.address,d.gstin,id]); if(r.affectedRows===0)return sendResponse(res,404,null,'Party not found.'); sendResponse(res,200,{id,...d},'Party updated.'); } catch (e){ console.error(e); sendResponse(res,500,null,'Failed to update party.'); } });
-app.delete('/api/parties/:id', async (req, res) => { try { const [r]=await pool.query('DELETE FROM parties WHERE id=?',[req.params.id]); if(r.affectedRows===0)return sendResponse(res,404,null,'Party not found.'); sendResponse(res,204); } catch (e){ console.error(e); sendResponse(res,500,null,'Failed to delete party.'); } });
+app.post('/api/parties', async (req, res) => {
+    console.log('--- API HIT: Creating Party ---', req.body);
+    const d=req.body; try { const [e] = await pool.query('SELECT id FROM parties WHERE LOWER(name)=LOWER(?)',[d.name.trim()]); if(e.length>0)return sendResponse(res,409,null,'Party name already exists.'); const [r] = await pool.query('INSERT INTO parties (name,email,address,gstin) VALUES (?,?,?,?)',[d.name.trim(),d.email,d.address,d.gstin]); sendResponse(res, 201, {id:r.insertId,...d},'Party added.'); } catch(e){ console.error(e); sendResponse(res,500,null,'Failed to add party.'); } });
+app.put('/api/parties/:id', async (req, res) => {
+    console.log(`--- API HIT: Updating Party ${req.params.id} ---`, req.body);
+    const d=req.body; const {id}=req.params; try { const [e]=await pool.query('SELECT id FROM parties WHERE LOWER(name)=LOWER(?) AND id!=?',[d.name.trim(),id]); if(e.length > 0)return sendResponse(res,409,null,'Another party with this name already exists.'); const [r]=await pool.query('UPDATE parties SET name=?,email=?,address=?,gstin=? WHERE id=?',[d.name.trim(),d.email,d.address,d.gstin,id]); if(r.affectedRows===0)return sendResponse(res,404,null,'Party not found.'); sendResponse(res,200,{id,...d},'Party updated.'); } catch (e){ console.error(e); sendResponse(res,500,null,'Failed to update party.'); } });
+app.delete('/api/parties/:id', async (req, res) => { try { const [r]=await pool.query('DELETE FROM parties WHERE id=?',[req.params.id]); if(r.affectedRows===0)return sendResponse(res,404,null,'Party not found.'); sendResponse(res,204); } catch (e) { console.error(e); sendResponse(res,500,null,'Failed to delete party.'); } });
 app.get('/api/products', async(req,res)=>{ const {search, page = 1, limit = 10} = req.query; const pN=parseInt(page), lN=parseInt(limit), off=(pN-1)*lN; let wc=[], qP=[]; if(search){ const sT=`%${search.toLowerCase()}%`; wc.push('(LOWER(description) LIKE ? OR LOWER(hsnSac) LIKE ? OR LOWER(partNo) LIKE ?)'); qP.push(sT, sT, sT); } const wS=wc.length>0?`WHERE ${wc.join(' AND ')}`:''; try{ const [[{total}]] = await pool.query(`SELECT COUNT(*) as total FROM products ${wS}`, qP); const tPg = Math.ceil(total/lN); const [p] = await pool.query(`SELECT * FROM products ${wS} ORDER BY description ASC LIMIT ? OFFSET ?`, [...qP, lN, off]); sendResponse(res, 200, p, null, {currentPage: pN, totalPages: tPg, totalItems: total}); } catch(e) { console.error(e); sendResponse(res, 500, null, 'Failed to fetch products.'); } });
-app.post('/api/products',async(req,res)=>{ const d=req.body; try { const[e]=await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?)',[d.description.trim()]); if(e.length>0) return sendResponse(res,409,null,'Product description already exists.'); const[r]=await pool.query('INSERT INTO products (description,hsnSac,unitPrice,gstRate,partNo) VALUES (?,?,?,?,?)',[d.description.trim(),d.hsnSac,d.unitPrice,d.gstRate,d.partNo || null]); sendResponse(res,201,{id:r.insertId,...d},'Product added.'); } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to add product.'); } });
-app.put('/api/products/:id',async(req,res)=>{ const d=req.body; const{id}=req.params; try { const[e]=await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?) AND id!=?',[d.description.trim(),id]); if(e.length>0) return sendResponse(res,409,null,'Another product with this name already exists.'); const[r]=await pool.query('UPDATE products SET description=?,hsnSac=?,unitPrice=?,gstRate=?,partNo=? WHERE id=?',[d.description.trim(),d.hsnSac,d.unitPrice,d.gstRate,d.partNo || null,id]); if(r.affectedRows===0) return sendResponse(res,404,null,'Product not found.'); sendResponse(res,200,{id,...d},'Product updated.'); } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to update product.'); } });
+app.post('/api/products',async(req,res)=>{
+    console.log('--- API HIT: Creating Product ---', req.body);
+    const d=req.body; try { const[e]=await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?)',[d.description.trim()]); if(e.length>0) return sendResponse(res,409,null,'Product description already exists.'); const[r]=await pool.query('INSERT INTO products (description,hsnSac,unitPrice,gstRate,partNo) VALUES (?,?,?,?,?)',[d.description.trim(),d.hsnSac,d.unitPrice,d.gstRate,d.partNo || null]); sendResponse(res,201,{id:r.insertId,...d},'Product added.'); } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to add product.'); } });
+app.put('/api/products/:id',async(req,res)=>{
+    console.log(`--- API HIT: Updating Product ${req.params.id} ---`, req.body);
+    const d=req.body; const{id}=req.params; try { const[e]=await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?) AND id!=?',[d.description.trim(),id]); if(e.length > 0) return sendResponse(res,409,null,'Another product with this name already exists.'); const[r]=await pool.query('UPDATE products SET description=?,hsnSac=?,unitPrice=?,gstRate=?,partNo=? WHERE id=?',[d.description.trim(),d.hsnSac,d.unitPrice,d.gstRate,d.partNo || null,id]); if(r.affectedRows===0) return sendResponse(res,404,null,'Product not found.'); sendResponse(res,200,{id,...d},'Product updated.'); } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to update product.'); } });
 app.delete('/api/products/:id',async(req,res)=>{try{const[r]=await pool.query('DELETE FROM products WHERE id=?',[req.params.id]);if(r.affectedRows===0)return sendResponse(res,404,null,'Product not found.');sendResponse(res,204);}catch(e){console.error(e);sendResponse(res,500,null,'Failed to delete party.');}});
+
+// --- Helper function to add/update products from bill items ---
+async function upsertProductsFromBillItems(connection, items) {
+    for (const item of items) {
+        if (item.description && item.description.trim() !== '') {
+            const trimmedDesc = item.description.trim();
+            const [existing] = await connection.query('SELECT id FROM products WHERE LOWER(description) = ?', [trimmedDesc.toLowerCase()]);
+            
+            if (existing.length > 0) {
+                // Product exists, update it
+                await connection.query('UPDATE products SET hsnSac=?, unitPrice=?, gstRate=?, partNo=? WHERE id=?', 
+                    [item.hsnSac, item.unitPrice, item.gstRate, item.partNo || null, existing[0].id]);
+            } else {
+                // Product does not exist, insert it
+                await connection.query('INSERT INTO products (description, hsnSac, unitPrice, gstRate, partNo) VALUES (?, ?, ?, ?, ?)', 
+                    [trimmedDesc, item.hsnSac, item.unitPrice, item.gstRate, item.partNo || null]);
+            }
+        }
+    }
+}
+
 app.get('/api/bills',async(req,res)=>{try{const[r]=await pool.query('SELECT id,billNumber,date,partyDetails,grandTotal,vehicleModelNo FROM bills ORDER BY date DESC,id DESC');const b=r.map(i=>({...i,partyDetails:i.partyDetails?JSON.parse(i.partyDetails):{}}));sendResponse(res,200,b);}catch(e){console.error(e);sendResponse(res,500,null,'Failed to fetch bills.');}});
 app.get('/api/bills/:id',async(req,res)=>{try{const[[b]]=await pool.query('SELECT * FROM bills WHERE id=?',[req.params.id]);if(!b)return sendResponse(res,404,null,'Bill not found.');const[i]=await pool.query('SELECT * FROM bill_items WHERE bill_id=?',[req.params.id]);b.items=i;b.sellerDetails=JSON.parse(b.sellerDetails);b.partyDetails=JSON.parse(b.partyDetails);sendResponse(res,200,b);}catch(e){console.error(e);sendResponse(res,500,null,'Failed to fetch bill details.');}});
-app.post('/api/bills',async(req,res)=>{const d=req.body;let c;try{c=await pool.getConnection();await c.beginTransaction();const s=`INSERT INTO bills(billNumber,date,reference,vehicleModelNo,sellerDetails,partyDetails,subTotal,totalCGST,totalSGST,roundOff,grandTotal,amountInWords)VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`;const[r]=await c.query(s,[d.billNumber,d.date,d.reference,d.vehicleModelNo,JSON.stringify(d.sellerDetails),JSON.stringify(d.partyDetails),d.subTotal,d.totalCGST,d.totalSGST,d.roundOff,d.grandTotal,d.amountInWords]);const nId=r.insertId;if(d.items.length>0){ const iS=`INSERT INTO bill_items(bill_id,description,hsnSac,quantity,unitPrice,gstRate,taxableValue,cgstAmount,sgstAmount,totalAmount,removeRefitting,dentingAcGas,painting,partNo)VALUES ?`; const iV=d.items.map(i=>[nId,i.description,i.hsnSac,i.quantity,i.unitPrice,i.gstRate,i.taxableValue,i.cgstAmount,i.sgstAmount,i.totalAmount,i.removeRefitting,i.dentingAcGas,i.painting,i.partNo || null]);await c.query(iS,[iV]);}await c.commit();sendResponse(res,201,{id:nId,...d},'Bill created.');}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to create bill: ${e.message}`);}finally{if(c)c.release();}});
-app.put('/api/bills/:id',async(req,res)=>{const bId=req.params.id;const d=req.body;let c;try{c=await pool.getConnection();await c.beginTransaction();const u=`UPDATE bills SET billNumber=?,date=?,reference=?,vehicleModelNo=?,sellerDetails=?,partyDetails=?,subTotal=?,totalCGST=?,totalSGST=?,roundOff=?,grandTotal=?,amountInWords=? WHERE id=?`;await c.query(u,[d.billNumber,d.date,d.reference,d.vehicleModelNo,JSON.stringify(d.sellerDetails),JSON.stringify(d.partyDetails),d.subTotal,d.totalCGST,d.totalSGST,d.roundOff,d.grandTotal,d.amountInWords,bId]);await c.query('DELETE FROM bill_items WHERE bill_id=?',[bId]);if(d.items.length>0){ const iS=`INSERT INTO bill_items(bill_id,description,hsnSac,quantity,unitPrice,gstRate,taxableValue,cgstAmount,sgstAmount,totalAmount,removeRefitting,dentingAcGas,painting,partNo)VALUES ?`; const iV=d.items.map(i=>[bId,i.description,i.hsnSac,i.quantity,i.unitPrice,i.gstRate,i.taxableValue,i.cgstAmount,i.sgstAmount,i.totalAmount,i.removeRefitting,i.dentingAcGas,i.painting,i.partNo || null]);await c.query(iS,[iV]);}await c.commit();sendResponse(res,200,{id:bId,...d},'Bill updated.');}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to update bill: ${e.message}`);}finally{if(c)c.release();}});
+app.post('/api/bills',async(req,res)=>{
+    console.log('--- API HIT: Creating Bill ---');
+    const d=req.body;let c;try{c=await pool.getConnection();await c.beginTransaction();const s=`INSERT INTO bills(billNumber,date,reference,vehicleModelNo,sellerDetails,partyDetails,subTotal,totalCGST,totalSGST,roundOff,grandTotal,amountInWords)VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`;const[r]=await c.query(s,[d.billNumber,d.date,d.reference,d.vehicleModelNo,JSON.stringify(d.sellerDetails),JSON.stringify(d.partyDetails),d.subTotal,d.totalCGST,d.totalSGST,d.roundOff,d.grandTotal,d.amountInWords]);const nId=r.insertId;if(d.items.length>0){ const iS=`INSERT INTO bill_items(bill_id,description,hsnSac,quantity,unitPrice,gstRate,taxableValue,cgstAmount,sgstAmount,totalAmount,removeRefitting,dentingAcGas,painting,partNo)VALUES ?`; const iV=d.items.map(i=>[nId,i.description,i.hsnSac,i.quantity,i.unitPrice,i.gstRate,i.taxableValue,i.cgstAmount,i.sgstAmount,i.totalAmount,i.removeRefitting,i.dentingAcGas,i.painting,i.partNo || null]);await c.query(iS,[iV]);} await upsertProductsFromBillItems(c, d.items); await c.commit();sendResponse(res,201,{id:nId,...d},'Bill created.');}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to create bill: ${e.message}`);}finally{if(c)c.release();}});
+app.put('/api/bills/:id',async(req,res)=>{
+    console.log(`--- API HIT: Updating Bill ${req.params.id} ---`);
+    const bId=req.params.id;const d=req.body;let c;try{c=await pool.getConnection();await c.beginTransaction();const u=`UPDATE bills SET billNumber=?,date=?,reference=?,vehicleModelNo=?,sellerDetails=?,partyDetails=?,subTotal=?,totalCGST=?,totalSGST=?,roundOff=?,grandTotal=?,amountInWords=? WHERE id=?`;await c.query(u,[d.billNumber,d.date,d.reference,d.vehicleModelNo,JSON.stringify(d.sellerDetails),JSON.stringify(d.partyDetails),d.subTotal,d.totalCGST,d.totalSGST,d.roundOff,d.grandTotal,d.amountInWords,bId]);await c.query('DELETE FROM bill_items WHERE bill_id=?',[bId]);if(d.items.length>0){ const iS=`INSERT INTO bill_items(bill_id,description,hsnSac,quantity,unitPrice,gstRate,taxableValue,cgstAmount,sgstAmount,totalAmount,removeRefitting,dentingAcGas,painting,partNo)VALUES ?`; const iV=d.items.map(i=>[bId,i.description,i.hsnSac,i.quantity,i.unitPrice,i.gstRate,i.taxableValue,i.cgstAmount,i.sgstAmount,i.totalAmount,i.removeRefitting,i.dentingAcGas,i.painting,i.partNo || null]);await c.query(iS,[iV]);} await upsertProductsFromBillItems(c, d.items); await c.commit();sendResponse(res,200,{id:bId,...d},'Bill updated.');}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to update bill: ${e.message}`);}finally{if(c)c.release();}});
 app.delete('/api/bills/:id',async(req,res)=>{let c;try{c=await pool.getConnection();await c.beginTransaction();await c.query('DELETE FROM bill_items WHERE bill_id=?',[req.params.id]);const[r]=await c.query('DELETE FROM bills WHERE id=?',[req.params.id]);if(r.affectedRows===0)return sendResponse(res,404,null,'Bill not found.');await c.commit();sendResponse(res,204);}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to delete bill: ${e.message}`);}finally{if(c)c.release();}});
 
 // ===================================================================================
@@ -109,6 +144,7 @@ async function generateBillPdfBuffer(billDetails, logoBuffer) {
 
         try {
             const context = { y: doc.page.margins.top };
+            const isSinglePageLayout = (billDetails.items || []).length <= 12;
 
             doc.on('pageAdded', () => {
                 context.y = doc.page.margins.top;
@@ -117,18 +153,27 @@ async function generateBillPdfBuffer(billDetails, logoBuffer) {
             
             drawHeader(doc, context, billDetails, logoBuffer, true);
             drawBillPartyAndMetaInfo(doc, context, billDetails);
-            const itemTableConfig = getItemTableConfig(doc, billDetails);
-            drawItemTable(doc, context, itemTableConfig);
-
-            const totalsHeight = 120;
-            const hsnConfig = getHsnSummaryConfig(doc, billDetails, itemTableConfig.tableWidth);
-            const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig) : 0;
-            const summaryHeight = totalsHeight + hsnHeight; 
-
-            checkAndHandlePageBreak(doc, context, summaryHeight);
             
-            drawTotalsSection(doc, context, billDetails);
-            if (hsnConfig) drawHsnSummary(doc, context, hsnConfig);
+            const layoutOptions = {
+                isSinglePage: isSinglePageLayout,
+                fontSize: isSinglePageLayout ? 7.8 : 9,
+                rowPadding: isSinglePageLayout ? 3 : 5
+            };
+
+            const itemTableConfig = getItemTableConfig(doc, billDetails, layoutOptions);
+            drawItemTable(doc, context, itemTableConfig, layoutOptions);
+
+            const totalsHeight = 140; 
+            const hsnConfig = getHsnSummaryConfig(doc, billDetails, itemTableConfig.tableWidth, layoutOptions);
+            const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig, layoutOptions) : 0;
+            const summaryHeight = totalsHeight + hsnHeight; 
+            
+            if (!isSinglePageLayout) {
+                 checkAndHandlePageBreak(doc, context, summaryHeight);
+            }
+            
+            drawTotalsSection(doc, context, billDetails, layoutOptions);
+            if (hsnConfig) drawHsnSummary(doc, context, hsnConfig, layoutOptions);
             
             finalizePages(doc, billDetails);
             
@@ -145,7 +190,7 @@ function drawHeader(doc, context, billDetails, logoBuffer, isFirstPage) {
     const { MARGIN, FONT, COLOR, LOGO } = PDF_SETTINGS;
 
     if (isFirstPage) {
-        context.y += 10;
+        context.y += 15;
         doc.font(FONT.BOLD).fontSize(18).fillColor(COLOR.INVOICE_TITLE)
            .text('TAX INVOICE', MARGIN.LEFT, context.y, {
                width: doc.page.width - MARGIN.LEFT - MARGIN.RIGHT,
@@ -213,6 +258,7 @@ function drawBillPartyAndMetaInfo(doc, context, billDetails) {
     doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM);
     
     if (partyDetails.name) { doc.text(partyDetails.name, PDF_SETTINGS.MARGIN.LEFT, leftY, { width: doc.page.width / 2 - 50 }); leftY = doc.y + 5; }
+    if (partyDetails.address) { doc.text(partyDetails.address, PDF_SETTINGS.MARGIN.LEFT, leftY, { width: doc.page.width / 2 - 50 }); leftY = doc.y + 5; }
     if (partyDetails.gstin) { doc.text(`GSTIN/UIN: ${partyDetails.gstin}`, PDF_SETTINGS.MARGIN.LEFT, leftY); leftY = doc.y + 5; }
     doc.text(`State Name: Gujarat, Code: 24`, PDF_SETTINGS.MARGIN.LEFT, leftY);
     const leftColumnBottom = doc.y;
@@ -307,18 +353,21 @@ function checkAndHandlePageBreak(doc, context, neededHeight) {
     const footerHeight = 150; // Reserve space for footer
     if (context.y + neededHeight > pageBottom - footerHeight) {
         doc.addPage();
+        return true;
     }
+    return false;
 }
 
-function drawItemTable(doc, context, config) {
+function drawItemTable(doc, context, config, options) {
     const { headers, rows, colWidths, tableWidth } = config;
+    const { fontSize, rowPadding, isSinglePage } = options;
     const headerHeight = 25;
 
     const drawTableHeader = () => {
         doc.rect(PDF_SETTINGS.MARGIN.LEFT, context.y, tableWidth, headerHeight)
            .fill(PDF_SETTINGS.COLOR.TABLE_HEADER_BG);
         let currentX = PDF_SETTINGS.MARGIN.LEFT;
-        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TABLE_HEADER_TEXT);
+        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TABLE_HEADER_TEXT);
         headers.forEach((header, i) => {
             doc.text(header.text, currentX + 5, context.y + 8, { width: colWidths[i] - 10, align: header.align || 'left' });
             if (i < headers.length - 1) {
@@ -334,12 +383,10 @@ function drawItemTable(doc, context, config) {
     drawTableHeader();
 
     rows.forEach((rowData, index) => {
-        const rowHeight = Math.max(20, doc.heightOfString(String(rowData.values[0]), { width: colWidths[0] - 10}) + 10);
+        const rowHeight = Math.max(18, doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize).heightOfString(String(rowData.values[0]), { width: colWidths[0] - 10}) + (rowPadding * 2));
         
-        checkAndHandlePageBreak(doc, context, rowHeight);
-        if (context.y + rowHeight > doc.page.height - doc.page.margins.bottom - 150) { // Check space before drawing
-             doc.addPage();
-             drawTableHeader();
+        if (!isSinglePage && checkAndHandlePageBreak(doc, context, rowHeight)) {
+            drawTableHeader();
         }
 
         const rowY = context.y;
@@ -348,11 +395,14 @@ function drawItemTable(doc, context, config) {
         }
         
         let currentX = PDF_SETTINGS.MARGIN.LEFT;
-        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+        
         rowData.values.forEach((cell, i) => {
-            doc.text(String(cell || ''), currentX + 5, rowY + 5, { width: colWidths[i] - 10, align: headers[i].align || 'left' });
+            const currentFontSize = headers[i].key === 'partNo' ? fontSize - 1 : fontSize;
+            doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(currentFontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+            doc.text(String(cell || ''), currentX + rowPadding, rowY + rowPadding, { width: colWidths[i] - (rowPadding * 2), align: headers[i].align || 'left' });
             currentX += colWidths[i];
         });
+
         doc.moveTo(PDF_SETTINGS.MARGIN.LEFT, context.y + rowHeight)
            .lineTo(PDF_SETTINGS.MARGIN.LEFT + tableWidth, context.y + rowHeight)
            .strokeColor(PDF_SETTINGS.COLOR.BORDER_LIGHT).lineWidth(0.5).stroke();
@@ -361,41 +411,48 @@ function drawItemTable(doc, context, config) {
     context.y += 10;
 }
 
-function getTableHeight(doc, config) {
+function getTableHeight(doc, config, options) {
     if (!config) return 0;
     let height = 0;
+    const { fontSize, rowPadding } = options;
+
     if (config.title) height += 35; // Title height
     height += config.isComplexHeader ? 35 : 25; // Header height
+    
+    doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize);
     config.rows.forEach(row => {
-        // Estimate row height based on the first column which usually has wrapped text
         const cellText = String(row.values[0] || '');
-        const textHeight = doc.heightOfString(cellText, { width: config.colWidths[0] - 10 }); // 10 for padding
-        height += Math.max(20, textHeight + 10); // Minimum row height 20, plus padding
+        const textHeight = doc.heightOfString(cellText, { width: config.colWidths[0] - 10 });
+        height += Math.max(18, textHeight + (rowPadding * 2));
     });
+
     if (config.footer) height += 25; // Footer height
     return height;
 }
 
-function getItemTableConfig(doc, billDetails) {
+function getItemTableConfig(doc, billDetails, options) {
+    const { fontSize } = options;
+    doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize);
     const headers = [
-        { text: "Description of Goods", widthRatio: 0.38, align: 'left' },
-        { text: "HSN/SAC", widthRatio: 0.12, align: 'left' },
-        { text: "Quantity", widthRatio: 0.10, align: 'center' },
-        { text: "Rate", widthRatio: 0.12, align: 'right' },
-        { text: "GST %", widthRatio: 0.10, align: 'center' },
-        { text: "Amount", widthRatio: 0.18, align: 'right' }
+        { text: "Description", widthRatio: 0.32, align: 'left', key: 'description' },
+        { text: "Part No.", widthRatio: 0.18, align: 'center', key: 'partNo' },
+        { text: "HSN/SAC", widthRatio: 0.10, align: 'center', key: 'hsn' },
+        { text: "Qty", widthRatio: 0.08, align: 'center', key: 'qty' },
+        { text: "Rate", widthRatio: 0.12, align: 'center', key: 'rate' },
+        { text: "GST", widthRatio: 0.08, align: 'center', key: 'gst' },
+        { text: "Amount", widthRatio: 0.12, align: 'center', key: 'amount' }
     ];
     
     const tableWidth = doc.page.width - PDF_SETTINGS.MARGIN.LEFT - PDF_SETTINGS.MARGIN.RIGHT;
     const colWidths = headers.map(h => h.widthRatio * tableWidth);
     
     const rows = billDetails.items.map((item, index) => {
-        const fullDescription = `${index + 1}. ${item.description || ''}${item.partNo ? `\n(Part No: ${item.partNo})` : ''}`;
         return {
             values: [
-                fullDescription,
+                `${index + 1}. ${item.description || ''}`,
+                item.partNo || '',
                 item.hsnSac || '',
-                item.quantity ? `${item.quantity} Qty` : '',
+                item.quantity || '0',
                 Number(item.unitPrice || 0).toFixed(2),
                 item.gstRate ? `${item.gstRate}%` : '0%',
                 Number(item.taxableValue || 0).toFixed(2)
@@ -406,9 +463,13 @@ function getItemTableConfig(doc, billDetails) {
     return { headers, rows, colWidths, tableWidth };
 }
 
-function drawTotalsSection(doc, context, billDetails) {
-    const { subTotal, totalCGST, totalSGST, grandTotal } = billDetails;
-    const roundOff = Number(billDetails.roundOff || 0);
+function drawTotalsSection(doc, context, billDetails, options) {
+    const { fontSize } = options;
+    const subTotal = parseFloat(billDetails.subTotal || 0);
+    const totalCGST = parseFloat(billDetails.totalCGST || 0);
+    const totalSGST = parseFloat(billDetails.totalSGST || 0);
+    const roundOff = parseFloat(billDetails.roundOff || 0);
+    const grandTotal = parseFloat(billDetails.grandTotal || 0);
 
     const totalsY = context.y;
     const labelWidth = 100;
@@ -416,48 +477,42 @@ function drawTotalsSection(doc, context, billDetails) {
     const valueX = doc.page.width - PDF_SETTINGS.MARGIN.RIGHT - valueWidth;
     const labelX = valueX - labelWidth;
 
-    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
     doc.text('Description', labelX, totalsY);
     doc.text('Amount', valueX, totalsY, { width: valueWidth, align: 'right' });
     context.y += 15;
 
     const addTaxRow = (label, value) => {
-        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
         doc.text(label, labelX, context.y, { width: labelWidth, align: 'left' });
         doc.text(Number(value || 0).toFixed(2), valueX, context.y, { width: valueWidth, align: 'right' });
-        context.y += 12;
+        context.y += (fontSize + 3);
     };
 
     addTaxRow('Sub Total:', subTotal);
-    if (totalCGST > 0) addTaxRow('CGST', totalCGST);
-    if (totalSGST > 0) addTaxRow('SGST', totalSGST);
-    if (roundOff.toFixed(2) !== '0.00') addTaxRow('Round Off:', roundOff);
+    if (totalCGST > 0) addTaxRow('CGST:', totalCGST);
+    if (totalSGST > 0) addTaxRow('SGST:', totalSGST);
+
+    if (Math.abs(roundOff) > 0.001) {
+        addTaxRow('Round Off:', roundOff);
+    }
     
     context.y += 5;
     doc.rect(labelX - 10, context.y, labelWidth + valueWidth + 20, 25).fill(PDF_SETTINGS.COLOR.GRAND_TOTAL_BG);
-    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(11).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
-    doc.text('TOTAL', labelX, context.y + 5, { width: labelWidth, align: 'left' });
-    doc.text(Number(grandTotal || 0).toFixed(2), valueX, context.y + 5, { width: valueWidth, align: 'right' });
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize + 2).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+    doc.text('GRAND TOTAL', labelX, context.y + 7, { width: labelWidth, align: 'left' });
+    doc.text(Number(grandTotal || 0).toFixed(2), valueX, context.y + 7, { width: valueWidth, align: 'right' });
     context.y += 30;
     
     const amountInWordsY = totalsY + 5;
-    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
     doc.text('Amount Chargeable (in words)', PDF_SETTINGS.MARGIN.LEFT, amountInWordsY);
     
-    doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM);
-    doc.text(`${billDetails.amountInWords || ''} Only`, PDF_SETTINGS.MARGIN.LEFT, amountInWordsY + 12, { width: labelX - PDF_SETTINGS.MARGIN.LEFT - 20});
-    
-    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK)
-       .text('E. & O.E', doc.page.width - PDF_SETTINGS.MARGIN.RIGHT - 50, context.y - 15, { align: 'right'});
-    
-    context.y += 10;
+    doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM);
+    doc.text(`${billDetails.amountInWords || ''} Only`, PDF_SETTINGS.MARGIN.LEFT, amountInWordsY + (fontSize + 4), { width: labelX - PDF_SETTINGS.MARGIN.LEFT - 20});
 }
 
-// ===================================================================================
-// =================== HSN SUMMARY TABLE (REWRITTEN FOR ALIGNMENT) ===================
-// ===================================================================================
-
-function getHsnSummaryConfig(doc, billDetails, tableWidth) {
+function getHsnSummaryConfig(doc, billDetails, tableWidth, options) {
     const { items } = billDetails;
     if (!items || items.length === 0) return null;
     
@@ -503,35 +558,33 @@ function getHsnSummaryConfig(doc, billDetails, tableWidth) {
 }
 
 
-function drawHsnSummary(doc, context, config) {
+function drawHsnSummary(doc, context, config, options) {
     if (!config) return;
 
-    checkAndHandlePageBreak(doc, context, getTableHeight(doc, config) + 40);
+    if(!options.isSinglePage) checkAndHandlePageBreak(doc, context, getTableHeight(doc, config, options) + 40);
     
     context.y += 15;
     
     const { rows, colWidths, footer, tableWidth, title } = config;
+    const { fontSize } = options;
 
-    // Calculate the starting X to center the table on the page
     const startX = (doc.page.width - tableWidth) / 2;
 
-    // Draw the title centered above the table
-    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(10).fillColor(PDF_SETTINGS.COLOR.SECTION_TITLE)
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize + 1).fillColor(PDF_SETTINGS.COLOR.SECTION_TITLE)
        .text(title, startX, context.y, {
            width: tableWidth,
            align: 'center'
        });
-    context.y += 25; // Increased space after title
+    context.y += (fontSize + 15);
 
 
     const cellPadding = 5;
     const headerHeight = 35;
     const rowHeight = 20;
     
-    // --- Draw Header ---
     const headerY = context.y;
     doc.rect(startX, headerY, tableWidth, headerHeight).fill(PDF_SETTINGS.COLOR.TABLE_HEADER_BG);
-    doc.fillColor(PDF_SETTINGS.COLOR.TABLE_HEADER_TEXT).font(PDF_SETTINGS.FONT.BOLD).fontSize(8);
+    doc.fillColor(PDF_SETTINGS.COLOR.TABLE_HEADER_TEXT).font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize - 0.5);
 
     let currentX = startX;
     
@@ -556,14 +609,13 @@ function drawHsnSummary(doc, context, config) {
 
     context.y += headerHeight;
 
-    // --- Draw Rows ---
     rows.forEach((rowData, index) => {
         const rowY = context.y;
         if (index % 2) {
             doc.rect(startX, rowY, tableWidth, rowHeight).fill(PDF_SETTINGS.COLOR.ROW_ALT_BG);
         }
         
-        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(8).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize - 0.5).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
         currentX = startX;
 
         doc.text(String(rowData.values[0] || ''), currentX + cellPadding, rowY + 6, { width: colWidths[0] - (cellPadding * 2), align: 'center' });
@@ -586,11 +638,10 @@ function drawHsnSummary(doc, context, config) {
         context.y += rowHeight;
     });
 
-    // --- Draw Footer ---
     const footerY = context.y;
     const footerHeight = 22;
     doc.rect(startX, footerY, tableWidth, footerHeight).fill(PDF_SETTINGS.COLOR.TABLE_HEADER_BG);
-    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TABLE_HEADER_TEXT);
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TABLE_HEADER_TEXT);
     
     currentX = startX;
 
@@ -610,11 +661,6 @@ function drawHsnSummary(doc, context, config) {
 
     context.y += footerHeight;
 }
-
-// ===================================================================================
-// =================== END OF HSN SUMMARY TABLE REWRITE ==============================
-// ===================================================================================
-
 
 async function getLogoBuffer(url) {
     if (!url) return null;
@@ -637,6 +683,7 @@ async function getLogoBuffer(url) {
 // --- PDF Download Endpoint ---
 app.get('/api/bills/:id/download-pdf', async (req, res) => {
     try {
+        console.log(`--- API HIT: PDF Download for Bill ID: ${req.params.id} ---`);
         const [billRows] = await pool.query('SELECT * FROM bills WHERE id = ?', [req.params.id]);
         if (billRows.length === 0) return sendResponse(res, 404, null, 'Bill not found.');
         
@@ -666,6 +713,7 @@ app.post('/api/bills/:id/send-email', async (req, res) => {
     try {
         const { to, cc, subject } = req.body;
         const billId = req.params.id;
+        console.log(`--- API HIT: Sending Email for Bill ID: ${billId} to ${to} ---`);
 
         if (!to) return sendResponse(res, 400, null, 'Recipient email is required.');
 
