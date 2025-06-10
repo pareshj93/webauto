@@ -232,7 +232,7 @@
     <div id="addProductFromSavedModal" class="modal no-print"><div class="modal-content"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Select Product</h3><span class="close-button" onclick="App.closeAddProductFromSavedModal()">&times;</span></div><div class="mb-3"><input type="search" id="modalProductSearchInput" placeholder="Search saved products..." class="w-full p-2 border"></div><div id="savedProductsSelectionList" class="max-h-60 overflow-y-auto border p-2"></div><div id="modalProductPaginationControls" class="mt-3 flex justify-between items-center"></div><button onclick="App.closeAddProductFromSavedModal()" class="mt-4 bg-gray-500 text-white font-bold py-2 px-4 rounded-md w-full shadow">Close</button></div></div>
 
     <script type="module">
-        const API_BASE_URL = 'http://localhost:3000/api';
+        const API_BASE_URL = 'https://webautofinal.onrender.com/api';
 
         let currentView = 'dashboardView';
         let sellerSettings = null;
