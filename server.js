@@ -1,4 +1,4 @@
-// --- server.js (Attractive Header Design) ---
+// --- server.js (Final Stable Version) ---
 require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
@@ -282,7 +282,6 @@ const PDF_SETTINGS = {
 function drawPdfContent(doc, billDetails, logoBuffer) {
     try {
         const context = { y: doc.page.margins.top };
-        const itemCount = (billDetails.items || []).length;
 
         doc.on('pageAdded', () => { 
             context.y = doc.page.margins.top;
@@ -309,20 +308,20 @@ function drawPdfContent(doc, billDetails, logoBuffer) {
         drawItemTable(doc, context, itemTableConfig, layoutOptions);
 
         const hsnConfig = getHsnSummaryConfig(doc, billDetails, itemTableConfig.tableWidth, layoutOptions);
-        const totalsHeight = 140;
+        const totalsHeight = 140; 
         const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig, layoutOptions) : 0;
         
-        // --- FINAL PAGE BREAK LOGIC ---
+        // --- FINAL DYNAMIC PAGE BREAK LOGIC ---
         if (checkAndHandlePageBreak(doc, context, totalsHeight + hsnHeight)) {
-            // Not enough space for everything, so it moved to a new page
+            // Not enough space for the whole summary block, it's on a new page.
             drawTotalsSection(doc, context, billDetails, layoutOptions);
             if(hsnConfig) {
-                 // Check again in case HSN summary alone needs another page
+                // Check again in case HSN summary alone needs another page break
                 checkAndHandlePageBreak(doc, context, hsnHeight);
                 drawHsnSummary(doc, context, hsnConfig, layoutOptions);
             }
         } else {
-             // Everything fits, draw both on the current page
+             // Everything fits, so draw both on the current page
              drawTotalsSection(doc, context, billDetails, layoutOptions);
              if(hsnConfig) {
                  drawHsnSummary(doc, context, hsnConfig, layoutOptions);
@@ -333,14 +332,11 @@ function drawPdfContent(doc, billDetails, logoBuffer) {
 
     } catch (e) {
         console.error("!!! FATAL ERROR during PDF generation:", e.stack);
-        // Write an error message directly into the PDF
         doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(18).fillColor('red')
            .text('Error Generating PDF', { align: 'center' });
         doc.moveDown();
         doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(10).fillColor('black')
-           .text('An unexpected error occurred. Please contact support.', { align: 'center'});
-        doc.moveDown();
-        doc.text(e.message, { align: 'center'});
+           .text('An unexpected error occurred on the server.', { align: 'center'});
     }
 }
 
