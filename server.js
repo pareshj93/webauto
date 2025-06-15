@@ -1,4 +1,4 @@
-// --- server.js (Final Version with Enhanced Logging & Business Rules) ---
+// --- server.js (Attractive Header Design) ---
 require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
@@ -54,7 +54,8 @@ app.use((req, res, next) => { if (!pool) return sendResponse(res, 503, null, "Da
 app.get('/api/settings', async (req, res) => { try { const [rows] = await pool.query('SELECT * FROM seller_settings WHERE id = ? LIMIT 1', [1]); sendResponse(res, 200, rows[0] || {}); } catch (e) { console.error(e); sendResponse(res, 500, null, 'Failed to fetch settings.'); } });
 app.post('/api/settings', async (req, res) => {
     console.log('--- API HIT: Saving Settings ---');
-    const d=req.body; try { const sql=`INSERT INTO seller_settings (id, name, address, gstin, email, companyLogoUrl, bankName, accountNo, ifsc, terms, nextBillNumber, nextBillNumberPrefix) VALUES (1,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),address=VALUES(address),gstin=VALUES(gstin),email=VALUES(email),companyLogoUrl=VALUES(companyLogoUrl),bankName=VALUES(bankName),accountNo=VALUES(accountNo),ifsc=VALUES(ifsc),terms=VALUES(terms),nextBillNumber=VALUES(nextBillNumber),nextBillNumberPrefix=VALUES(nextBillNumberPrefix)`; await pool.query(sql,[d.name,d.address,d.gstin,d.email,d.companyLogoUrl,d.bankName,d.accountNo,d.ifsc,d.terms,d.nextBillNumber,d.nextBillNumberPrefix]); sendResponse(res,200,d,'Settings saved.'); } catch(e){ console.error(e); sendResponse(res,500,null,'Failed to save settings.'); } });
+    const d=req.body; try { const sql=`INSERT INTO seller_settings (id, name, address, gstin, email, companyLogoUrl, bankName, accountNo, ifsc, terms, nextBillNumber, nextBillNumberPrefix, nextProformaNumber, nextProformaNumberPrefix) VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),address=VALUES(address),gstin=VALUES(gstin),email=VALUES(email),companyLogoUrl=VALUES(companyLogoUrl),bankName=VALUES(bankName),accountNo=VALUES(accountNo),ifsc=VALUES(ifsc),terms=VALUES(terms),nextBillNumber=VALUES(nextBillNumber),nextBillNumberPrefix=VALUES(nextBillNumberPrefix),nextProformaNumber=VALUES(nextProformaNumber),nextProformaNumberPrefix=VALUES(nextProformaNumberPrefix)`; await pool.query(sql,[d.name,d.address,d.gstin,d.email,d.companyLogoUrl,d.bankName,d.accountNo,d.ifsc,d.terms,d.nextBillNumber,d.nextBillNumberPrefix, d.nextProformaNumber, d.nextProformaNumberPrefix]); sendResponse(res,200,d,'Settings saved.'); } catch(e){ console.error(e); sendResponse(res,500,null,'Failed to save settings.'); } });
+
 app.get('/api/parties', async (req, res) => { try { const [rows] = await pool.query('SELECT * FROM parties ORDER BY name ASC'); sendResponse(res, 200, rows); } catch (e) { console.error(e); sendResponse(res, 500, null, 'Failed to fetch parties.'); } });
 app.post('/api/parties', async (req, res) => {
     console.log('--- API HIT: Creating Party ---', req.body);
@@ -70,19 +71,12 @@ app.post('/api/products',async(req,res)=>{
     try {
         const description = d.description.trim();
         const partNo = d.partNo ? d.partNo.trim() : null;
-        
         const [descExists] = await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?)', [description]);
-        if (descExists.length > 0) {
-            return sendResponse(res, 409, null, 'A product with this description already exists.');
-        }
-        
+        if (descExists.length > 0) return sendResponse(res, 409, null, 'A product with this description already exists.');
         if (partNo) {
             const [partNoExists] = await pool.query('SELECT id FROM products WHERE partNo = ?', [partNo]);
-            if (partNoExists.length > 0) {
-                return sendResponse(res, 409, null, 'A product with this Part No. already exists.');
-            }
+            if (partNoExists.length > 0) return sendResponse(res, 409, null, 'A product with this Part No. already exists.');
         }
-        
         const[r]=await pool.query('INSERT INTO products (description,hsnSac,unitPrice,gstRate,partNo) VALUES (?,?,?,?,?)',[description, d.hsnSac, d.unitPrice, d.gstRate, partNo]);
         sendResponse(res,201,{id:r.insertId,...d},'Product added.');
     } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to add product.'); }
@@ -93,54 +87,199 @@ app.put('/api/products/:id',async(req,res)=>{
     try {
         const description = d.description.trim();
         const partNo = d.partNo ? d.partNo.trim() : null;
-
         const [descExists]=await pool.query('SELECT id FROM products WHERE LOWER(description)=LOWER(?) AND id!=?',[description, id]);
         if(descExists.length > 0) return sendResponse(res,409,null,'Another product with this description already exists.');
-
         if(partNo) {
             const [partNoExists]=await pool.query('SELECT id FROM products WHERE partNo=? AND id!=?',[partNo, id]);
             if(partNoExists.length > 0) return sendResponse(res,409,null,'Another product with this Part No. already exists.');
         }
-
         const[r]=await pool.query('UPDATE products SET description=?,hsnSac=?,unitPrice=?,gstRate=?,partNo=? WHERE id=?',[description, d.hsnSac, d.unitPrice, d.gstRate, partNo, id]);
         if(r.affectedRows===0) return sendResponse(res,404,null,'Product not found.');
         sendResponse(res,200,{id,...d},'Product updated.');
     } catch(e) { console.error(e); sendResponse(res,500,null,'Failed to update product.'); }
 });
-app.delete('/api/products/:id',async(req,res)=>{try{const[r]=await pool.query('DELETE FROM products WHERE id=?',[req.params.id]);if(r.affectedRows===0)return sendResponse(res,404,null,'Product not found.');sendResponse(res,204);}catch(e){console.error(e);sendResponse(res,500,null,'Failed to delete party.');}});
+app.delete('/api/products/:id',async(req,res)=>{try{const[r]=await pool.query('DELETE FROM parties WHERE id=?',[req.params.id]);if(r.affectedRows===0)return sendResponse(res,404,null,'Party not found.');sendResponse(res,204);}catch(e){console.error(e);sendResponse(res,500,null,'Failed to delete party.');}});
 
 async function upsertProductsFromBillItems(connection, items) {
     for (const item of items) {
         if (item.description && item.description.trim() !== '') {
             const trimmedDesc = item.description.trim();
             const [existing] = await connection.query('SELECT id FROM products WHERE LOWER(description) = ?', [trimmedDesc.toLowerCase()]);
-            
             if (existing.length > 0) {
-                await connection.query('UPDATE products SET hsnSac=?, unitPrice=?, gstRate=?, partNo=? WHERE id=?', 
-                    [item.hsnSac, item.unitPrice, item.gstRate, item.partNo || null, existing[0].id]);
+                await connection.query('UPDATE products SET hsnSac=?, unitPrice=?, gstRate=?, partNo=? WHERE id=?', [item.hsnSac, item.unitPrice, item.gstRate, item.partNo || null, existing[0].id]);
             } else {
-                await connection.query('INSERT INTO products (description, hsnSac, unitPrice, gstRate, partNo) VALUES (?, ?, ?, ?, ?)', 
-                    [trimmedDesc, item.hsnSac, item.unitPrice, item.gstRate, item.partNo || null]);
+                await connection.query('INSERT INTO products (description, hsnSac, unitPrice, gstRate, partNo) VALUES (?, ?, ?, ?, ?)', [trimmedDesc, item.hsnSac, item.unitPrice, item.gstRate, item.partNo || null]);
             }
         }
     }
 }
 
-app.get('/api/bills',async(req,res)=>{try{const[r]=await pool.query('SELECT id,billNumber,date,partyDetails,grandTotal,vehicleModelNo FROM bills ORDER BY date DESC,id DESC');const b=r.map(i=>({...i,partyDetails:i.partyDetails?JSON.parse(i.partyDetails):{}}));sendResponse(res,200,b);}catch(e){console.error(e);sendResponse(res,500,null,'Failed to fetch bills.');}});
-app.get('/api/bills/:id',async(req,res)=>{try{const[[b]]=await pool.query('SELECT * FROM bills WHERE id=?',[req.params.id]);if(!b)return sendResponse(res,404,null,'Bill not found.');const[i]=await pool.query('SELECT * FROM bill_items WHERE bill_id=?',[req.params.id]);b.items=i;b.sellerDetails=JSON.parse(b.sellerDetails);b.partyDetails=JSON.parse(b.partyDetails);sendResponse(res,200,b);}catch(e){console.error(e);sendResponse(res,500,null,'Failed to fetch bill details.');}});
-app.post('/api/bills',async(req,res)=>{
-    console.log('--- API HIT: Creating Bill ---');
-    const d=req.body;let c;try{c=await pool.getConnection();await c.beginTransaction();const s=`INSERT INTO bills(billNumber,date,reference,vehicleModelNo,sellerDetails,partyDetails,subTotal,totalCGST,totalSGST,roundOff,grandTotal,amountInWords)VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`;const[r]=await c.query(s,[d.billNumber,d.date,d.reference,d.vehicleModelNo,JSON.stringify(d.sellerDetails),JSON.stringify(d.partyDetails),d.subTotal,d.totalCGST,d.totalSGST,d.roundOff,d.grandTotal,d.amountInWords]);const nId=r.insertId;if(d.items.length>0){ const iS=`INSERT INTO bill_items(bill_id,description,hsnSac,quantity,unitPrice,gstRate,taxableValue,cgstAmount,sgstAmount,totalAmount,removeRefitting,dentingAcGas,painting,partNo)VALUES ?`; const iV=d.items.map(i=>[nId,i.description,i.hsnSac,i.quantity,i.unitPrice,i.gstRate,i.taxableValue,i.cgstAmount,i.sgstAmount,i.totalAmount,i.removeRefitting,i.dentingAcGas,i.painting,i.partNo || null]);await c.query(iS,[iV]);} await upsertProductsFromBillItems(c, d.items); await c.commit();sendResponse(res,201,{id:nId,...d},'Bill created.');}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to create bill: ${e.message}`);}finally{if(c)c.release();}});
-app.put('/api/bills/:id',async(req,res)=>{
-    console.log(`--- API HIT: Updating Bill ${req.params.id} ---`);
-    const bId=req.params.id;const d=req.body;let c;try{c=await pool.getConnection();await c.beginTransaction();const u=`UPDATE bills SET billNumber=?,date=?,reference=?,vehicleModelNo=?,sellerDetails=?,partyDetails=?,subTotal=?,totalCGST=?,totalSGST=?,roundOff=?,grandTotal=?,amountInWords=? WHERE id=?`;await c.query(u,[d.billNumber,d.date,d.reference,d.vehicleModelNo,JSON.stringify(d.sellerDetails),JSON.stringify(d.partyDetails),d.subTotal,d.totalCGST,d.totalSGST,d.roundOff,d.grandTotal,d.amountInWords,bId]);await c.query('DELETE FROM bill_items WHERE bill_id=?',[bId]);if(d.items.length>0){ const iS=`INSERT INTO bill_items(bill_id,description,hsnSac,quantity,unitPrice,gstRate,taxableValue,cgstAmount,sgstAmount,totalAmount,removeRefitting,dentingAcGas,painting,partNo)VALUES ?`; const iV=d.items.map(i=>[bId,i.description,i.hsnSac,i.quantity,i.unitPrice,i.gstRate,i.taxableValue,i.cgstAmount,i.sgstAmount,i.totalAmount,i.removeRefitting,i.dentingAcGas,i.painting,i.partNo || null]);await c.query(iS,[iV]);} await upsertProductsFromBillItems(c, d.items); await c.commit();sendResponse(res,200,{id:bId,...d},'Bill updated.');}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to update bill: ${e.message}`);}finally{if(c)c.release();}});
-app.delete('/api/bills/:id',async(req,res)=>{let c;try{c=await pool.getConnection();await c.beginTransaction();await c.query('DELETE FROM bill_items WHERE bill_id=?',[req.params.id]);const[r]=await c.query('DELETE FROM bills WHERE id=?',[req.params.id]);if(r.affectedRows===0)return sendResponse(res,404,null,'Bill not found.');await c.commit();sendResponse(res,204);}catch(e){if(c)await c.rollback();console.error(e);sendResponse(res,500,null,`Failed to delete bill: ${e.message}`);}finally{if(c)c.release();}});
+app.get('/api/bills', async (req, res) => {
+    try {
+        const query = `
+            SELECT id, billNumber, date, partyDetails, grandTotal, vehicleModelNo, invoice_type FROM bills
+            UNION ALL
+            SELECT id, billNumber, date, partyDetails, grandTotal, vehicleModelNo, invoice_type FROM proforma_invoices
+            ORDER BY date DESC, id DESC
+        `;
+        const [rows] = await pool.query(query);
+        const bills = rows.map(item => ({...item, partyDetails: item.partyDetails ? JSON.parse(item.partyDetails) : {} }));
+        sendResponse(res, 200, bills);
+    } catch (e) {
+        console.error(e);
+        sendResponse(res, 500, null, 'Failed to fetch bills.');
+    }
+});
+
+app.get('/api/bills/:id', async (req, res) => {
+    try {
+        const { type } = req.query;
+        const billId = req.params.id;
+        if (!type) return sendResponse(res, 400, null, 'Invoice type query parameter is required.');
+        const isProforma = type === 'PROFORMA_INVOICE';
+        const tableName = isProforma ? 'proforma_invoices' : 'bills';
+        const itemsTableName = isProforma ? 'proforma_invoice_items' : 'bill_items';
+        
+        const [[bill]] = await pool.query(`SELECT * FROM ${tableName} WHERE id = ?`, [billId]);
+        if (!bill) return sendResponse(res, 404, null, 'Bill not found.');
+        
+        const [items] = await pool.query(`SELECT * FROM ${itemsTableName} WHERE bill_id = ?`, [billId]);
+        bill.items = items;
+        bill.sellerDetails = JSON.parse(bill.sellerDetails);
+        bill.partyDetails = JSON.parse(bill.partyDetails);
+        
+        sendResponse(res, 200, bill);
+    } catch (e) {
+        console.error(e);
+        sendResponse(res, 500, null, 'Failed to fetch bill details.');
+    }
+});
+
+app.post('/api/bills', async (req, res) => {
+    const d = req.body;
+    const isProforma = d.invoice_type === 'PROFORMA_INVOICE';
+    console.log(`--- API HIT: Creating ${d.invoice_type || 'TAX_INVOICE'} ---`);
+    let c;
+    try {
+        c = await pool.getConnection();
+        await c.beginTransaction();
+
+        const mainTable = isProforma ? 'proforma_invoices' : 'bills';
+        const itemsTable = isProforma ? 'proforma_invoice_items' : 'bill_items';
+
+        const s = `INSERT INTO ${mainTable}(billNumber,date,reference,vehicleModelNo,sellerDetails,partyDetails,subTotal,totalCGST,totalSGST,roundOff,grandTotal,amountInWords,invoice_type)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+        const [r] = await c.query(s, [d.billNumber, d.date, d.reference, d.vehicleModelNo, JSON.stringify(d.sellerDetails), JSON.stringify(d.partyDetails), d.subTotal, d.totalCGST, d.totalSGST, d.roundOff, d.grandTotal, d.amountInWords, d.invoice_type]);
+        const nId = r.insertId;
+
+        if (d.items.length > 0) {
+            const iS = `INSERT INTO ${itemsTable}(bill_id,description,hsnSac,quantity,unitPrice,gstRate,taxableValue,cgstAmount,sgstAmount,totalAmount,removeRefitting,dentingAcGas,painting,partNo)VALUES ?`;
+            const iV = d.items.map(i => [nId, i.description, i.hsnSac, i.quantity, i.unitPrice, i.gstRate, i.taxableValue, i.cgstAmount, i.sgstAmount, i.totalAmount, i.removeRefitting, i.dentingAcGas, i.painting, i.partNo || null]);
+            await c.query(iS, [iV]);
+        }
+        
+        if (!isProforma) {
+            await upsertProductsFromBillItems(c, d.items);
+        }
+
+        await c.commit();
+        sendResponse(res, 201, { id: nId, ...d }, `${isProforma ? 'Proforma' : 'Bill'} created.`);
+    } catch (e) {
+        if (c) await c.rollback();
+        console.error(e);
+        sendResponse(res, 500, null, `Failed to create invoice: ${e.message}`);
+    } finally {
+        if (c) c.release();
+    }
+});
+
+app.put('/api/bills/:id', async (req, res) => {
+    const bId = req.params.id;
+    const d = req.body;
+    const isProforma = d.invoice_type === 'PROFORMA_INVOICE';
+    console.log(`--- API HIT: Updating ${d.invoice_type || 'TAX_INVOICE'} ${bId} ---`);
+    let c;
+    try {
+        c = await pool.getConnection();
+        await c.beginTransaction();
+
+        const mainTable = isProforma ? 'proforma_invoices' : 'bills';
+        const itemsTable = isProforma ? 'proforma_invoice_items' : 'bill_items';
+
+        const u = `UPDATE ${mainTable} SET billNumber=?,date=?,reference=?,vehicleModelNo=?,sellerDetails=?,partyDetails=?,subTotal=?,totalCGST=?,totalSGST=?,roundOff=?,grandTotal=?,amountInWords=?,invoice_type=? WHERE id=?`;
+        await c.query(u, [d.billNumber, d.date, d.reference, d.vehicleModelNo, JSON.stringify(d.sellerDetails), JSON.stringify(d.partyDetails), d.subTotal, d.totalCGST, d.totalSGST, d.roundOff, d.grandTotal, d.amountInWords, d.invoice_type, bId]);
+        
+        await c.query(`DELETE FROM ${itemsTable} WHERE bill_id=?`, [bId]);
+        
+        if (d.items.length > 0) {
+            const iS = `INSERT INTO ${itemsTable}(bill_id,description,hsnSac,quantity,unitPrice,gstRate,taxableValue,cgstAmount,sgstAmount,totalAmount,removeRefitting,dentingAcGas,painting,partNo)VALUES ?`;
+            const iV = d.items.map(i => [bId, i.description, i.hsnSac, i.quantity, i.unitPrice, i.gstRate, i.taxableValue, i.cgstAmount, i.sgstAmount, i.totalAmount, i.removeRefitting, i.dentingAcGas, i.painting, i.partNo || null]);
+            await c.query(iS, [iV]);
+        }
+        
+        if (!isProforma) {
+            await upsertProductsFromBillItems(c, d.items);
+        }
+        
+        await c.commit();
+        sendResponse(res, 200, { id: bId, ...d }, `${isProforma ? 'Proforma' : 'Bill'} updated.`);
+    } catch (e) {
+        if (c) await c.rollback();
+        console.error(e);
+        sendResponse(res, 500, null, `Failed to update invoice: ${e.message}`);
+    } finally {
+        if (c) c.release();
+    }
+});
+
+app.delete('/api/bills/:id', async (req, res) => {
+    const { type } = req.query;
+    const billId = req.params.id;
+    if (!type) return sendResponse(res, 400, null, 'Invoice type query parameter is required.');
+    
+    const isProforma = type === 'PROFORMA_INVOICE';
+    const mainTable = isProforma ? 'proforma_invoices' : 'bills';
+    const itemsTable = isProforma ? 'proforma_invoice_items' : 'bill_items';
+
+    let c;
+    try {
+        c = await pool.getConnection();
+        await c.beginTransaction();
+        await c.query(`DELETE FROM ${itemsTable} WHERE bill_id=?`, [billId]);
+        const [r] = await c.query(`DELETE FROM ${mainTable} WHERE id=?`, [billId]);
+        if (r.affectedRows === 0) return sendResponse(res, 404, null, 'Bill not found.');
+        await c.commit();
+        sendResponse(res, 204);
+    } catch (e) {
+        if (c) await c.rollback();
+        console.error(e);
+        sendResponse(res, 500, null, `Failed to delete invoice: ${e.message}`);
+    } finally {
+        if (c) c.release();
+    }
+});
 
 const PDF_SETTINGS = {
-    MARGIN: { TOP: 25, BOTTOM: 25, LEFT: 35, RIGHT: 35 },
+    MARGIN: { TOP: 50, BOTTOM: 25, LEFT: 35, RIGHT: 35 },
     FONT: { NORMAL: 'Helvetica', BOLD: 'Helvetica-Bold' },
-    COLOR: { HEADER_TEXT: '#000000', INVOICE_TITLE: '#000000', SECTION_TITLE: '#34495E', TABLE_HEADER_BG: '#4A90E2', TABLE_HEADER_TEXT: '#FFFFFF', ROW_ALT_BG: '#F0F6FF', TEXT_DARK: '#212529', TEXT_MEDIUM: '#495057', BORDER_DARK: '#000000', BORDER_LIGHT: '#CCCCCC', ACCENT: '#4A90E2', GRAND_TOTAL_BG: '#EAF2F8' },
-    LOGO: { MAX_WIDTH: 240, MAX_HEIGHT: 100 }
+    COLOR: { 
+        HEADER_BG: '#FFFFFF',
+        LINE_COLOR: '#E0E0E0',
+        TEXT_LIGHT: '#555555',
+        ACCENT_BLUE: '#3498DB',
+        HEADER_TEXT: '#000000', 
+        INVOICE_TITLE: '#000000', 
+        SECTION_TITLE: '#34495E', 
+        TABLE_HEADER_BG: '#4A90E2', 
+        TABLE_HEADER_TEXT: '#FFFFFF', 
+        ROW_ALT_BG: '#F0F6FF', 
+        TEXT_DARK: '#212529', 
+        TEXT_MEDIUM: '#495057', 
+        BORDER_DARK: '#000000', 
+        BORDER_LIGHT: '#CCCCCC', 
+        ACCENT: '#4A90E2', 
+        GRAND_TOTAL_BG: '#EAF2F8' 
+    },
+    LOGO: { MAX_WIDTH: 180, MAX_HEIGHT: 100 } 
 };
 
 async function generateBillPdfBuffer(billDetails, logoBuffer) {
@@ -153,25 +292,66 @@ async function generateBillPdfBuffer(billDetails, logoBuffer) {
 
         try {
             const context = { y: doc.page.margins.top };
-            const isSinglePageLayout = (billDetails.items || []).length <= 12;
-            doc.on('pageAdded', () => { context.y = doc.page.margins.top; drawHeader(doc, context, billDetails, null, false); });
+            const itemCount = (billDetails.items || []).length;
+
+            doc.on('pageAdded', () => { 
+                context.y = doc.page.margins.top;
+                doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM)
+                    .text(`Invoice Continued: ${billDetails.billNumber}`, doc.page.margins.left, doc.page.margins.top - 20, { 
+                        width: doc.page.width - doc.page.margins.left - doc.page.margins.right, 
+                        align: 'center' 
+                    });
+            });
             
             drawHeader(doc, context, billDetails, logoBuffer, true);
             drawBillPartyAndMetaInfo(doc, context, billDetails);
             
-            const layoutOptions = { isSinglePage: isSinglePageLayout, fontSize: isSinglePageLayout ? 7.8 : 9, rowPadding: isSinglePageLayout ? 3 : 5 };
+            const title = (billDetails.invoice_type === 'PROFORMA_INVOICE') ? 'PROFORMA INVOICE' : 'TAX INVOICE';
+            doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(14).fillColor(PDF_SETTINGS.COLOR.INVOICE_TITLE)
+               .text(title, PDF_SETTINGS.MARGIN.LEFT, context.y, { 
+                   width: doc.page.width - PDF_SETTINGS.MARGIN.LEFT - PDF_SETTINGS.MARGIN.RIGHT, 
+                   align: 'center' 
+               });
+            context.y = doc.y + 15;
+            
+            let layoutOptions = { fontSize: 9, rowPadding: 5 };
+            if (itemCount <= 10) {
+                 layoutOptions = { fontSize: 7.8, rowPadding: 3 };
+            }
+
             const itemTableConfig = getItemTableConfig(doc, billDetails, layoutOptions);
             drawItemTable(doc, context, itemTableConfig, layoutOptions);
 
-            const totalsHeight = 140; 
             const hsnConfig = getHsnSummaryConfig(doc, billDetails, itemTableConfig.tableWidth, layoutOptions);
-            const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig, layoutOptions) : 0;
-            const summaryHeight = totalsHeight + hsnHeight; 
             
-            if (!isSinglePageLayout) checkAndHandlePageBreak(doc, context, summaryHeight);
-            
-            drawTotalsSection(doc, context, billDetails, layoutOptions);
-            if (hsnConfig) drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+            if (itemCount <= 10) {
+                drawTotalsSection(doc, context, billDetails, layoutOptions);
+                if (hsnConfig) {
+                    drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+                }
+            } else if (itemCount <= 14) {
+                drawTotalsSection(doc, context, billDetails, layoutOptions);
+                if (hsnConfig) {
+                    doc.addPage();
+                    drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+                }
+            } else {
+                const totalsHeight = 140; 
+                const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig, layoutOptions) : 0;
+                
+                if (checkAndHandlePageBreak(doc, context, totalsHeight + hsnHeight)) {
+                    drawTotalsSection(doc, context, billDetails, layoutOptions);
+                     if (hsnConfig) {
+                        checkAndHandlePageBreak(doc, context, hsnHeight);
+                        drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+                     }
+                } else {
+                    drawTotalsSection(doc, context, billDetails, layoutOptions);
+                    if (hsnConfig) {
+                        drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+                    }
+                }
+            }
             
             finalizePages(doc, billDetails);
             doc.end();
@@ -184,56 +364,90 @@ function drawHeader(doc, context, billDetails, logoBuffer, isFirstPage) {
     const { MARGIN, FONT, COLOR, LOGO } = PDF_SETTINGS;
 
     if (isFirstPage) {
-        context.y += 15;
-        doc.font(FONT.BOLD).fontSize(18).fillColor(COLOR.INVOICE_TITLE).text('TAX INVOICE', MARGIN.LEFT, context.y, { width: doc.page.width - MARGIN.LEFT - MARGIN.RIGHT, align: 'center' });
-        context.y = doc.y + 15;
-
-        const headerStartY = context.y;
-        const logoX = MARGIN.LEFT;
-        const companyDetailsX = logoX + LOGO.MAX_WIDTH + 20;
-
+        const headerStartY = MARGIN.TOP - 20; 
+        
         let logoHeight = 0;
-        if (logoBuffer) { doc.image(logoBuffer, logoX, headerStartY, { fit: [LOGO.MAX_WIDTH, LOGO.MAX_HEIGHT], align: 'left', valign: 'top' }); logoHeight = LOGO.MAX_HEIGHT; }
+        let finalRightY = headerStartY;
 
-        let tempY = headerStartY;
-        const dryRunDoc = doc;
-        dryRunDoc.font(FONT.BOLD).fontSize(14);
-        tempY += dryRunDoc.heightOfString(sellerDetails.name || "", { width: doc.page.width - companyDetailsX - MARGIN.RIGHT }) + 5;
-        dryRunDoc.font(FONT.NORMAL).fontSize(9);
-        tempY += dryRunDoc.heightOfString(sellerDetails.address || "", { width: doc.page.width - companyDetailsX - MARGIN.RIGHT }) + 5;
-        if (sellerDetails.gstin) tempY += dryRunDoc.heightOfString(`GSTIN/UIN: ${sellerDetails.gstin}`, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
-        const textBlockHeight = tempY - headerStartY;
+        if (logoBuffer) {
+            try {
+                const logoDims = doc.image(logoBuffer, MARGIN.LEFT, headerStartY, {
+                    fit: [LOGO.MAX_WIDTH, 80],
+                    align: 'left',
+                    valign: 'top'
+                });
+                logoHeight = logoDims.height;
+            } catch (imgErr) {
+                console.error("Error embedding logo in PDF:", imgErr.message);
+            }
+        }
 
-        const companyDetailsY = headerStartY + (logoHeight / 2) - (textBlockHeight / 2);
-        let currentY = companyDetailsY > headerStartY ? companyDetailsY : headerStartY;
+        const companyDetailsX = MARGIN.LEFT + LOGO.MAX_WIDTH + 25;
+        const textBlockMaxWidth = doc.page.width - companyDetailsX - MARGIN.RIGHT;
 
-        doc.font(FONT.BOLD).fontSize(14).fillColor(COLOR.HEADER_TEXT).text(sellerDetails.name || "", companyDetailsX, currentY, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
-        doc.font(FONT.NORMAL).fontSize(9).fillColor(COLOR.TEXT_MEDIUM);
-        doc.text(sellerDetails.address || "", companyDetailsX, doc.y + 5, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
-        if (sellerDetails.gstin) doc.text(`GSTIN/UIN: ${sellerDetails.gstin}`, companyDetailsX, doc.y + 5, { width: doc.page.width - companyDetailsX - MARGIN.RIGHT });
+        if (textBlockMaxWidth > 0) {
+            doc.font(FONT.BOLD).fontSize(18).fillColor(COLOR.TEXT_DARK)
+                .text(sellerDetails.name || "", companyDetailsX, headerStartY, { width: textBlockMaxWidth });
 
-        context.y = headerStartY + Math.max(logoHeight, textBlockHeight) + 25;
-    } else {
-        doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_MEDIUM).text(`Invoice Continued: ${billDetails.billNumber}`, MARGIN.LEFT, context.y, { width: doc.page.width - MARGIN.LEFT - MARGIN.RIGHT, align: 'center' });
-        context.y = doc.y + 20;
+            doc.moveDown(0.5);
+
+            doc.font(FONT.NORMAL).fontSize(9).fillColor(COLOR.TEXT_LIGHT)
+                .text(sellerDetails.address || "", { width: textBlockMaxWidth });
+            
+            if (sellerDetails.gstin) {
+                 doc.moveDown(0.5);
+                doc.text(`GSTIN/UIN: ${sellerDetails.gstin}`, { width: textBlockMaxWidth });
+            }
+            finalRightY = doc.y;
+        }
+
+        context.y = Math.max(headerStartY + logoHeight, finalRightY) + 30;
+
+    } else { 
+        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_MEDIUM)
+            .text(`Invoice Continued: ${billDetails.billNumber}`, MARGIN.LEFT, MARGIN.TOP - 20, {
+                width: doc.page.width - MARGIN.LEFT - MARGIN.RIGHT,
+                align: 'center'
+            });
+        context.y = MARGIN.TOP;
     }
 }
 
 function drawBillPartyAndMetaInfo(doc, context, billDetails) {
+    if (isNaN(context.y)) {
+        console.error("!!! RECOVERED from NaN context.y in drawBillPartyAndMetaInfo. Defaulting Y to 150. !!!");
+        context.y = 150; 
+    }
+
     const { partyDetails } = billDetails;
+    const { MARGIN, FONT, COLOR } = PDF_SETTINGS;
     const sectionStartY = context.y;
-    const rightColumnX = doc.page.width / 2 + 20;
+    const rightColumnX = doc.page.width / 2 + 10;
+    const lineGap = 2;
+    const sectionPadding = 10;
 
+    let leftX = MARGIN.LEFT;
     let leftY = sectionStartY;
-    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(10).fillColor(PDF_SETTINGS.COLOR.SECTION_TITLE).text('Buyer (Bill to)', PDF_SETTINGS.MARGIN.LEFT, leftY);
-    leftY += 15;
 
-    doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM);
+    doc.font(FONT.BOLD).fontSize(10).fillColor(COLOR.ACCENT_BLUE)
+        .text('BUYER (BILL TO)', leftX, leftY, { characterSpacing: 1 });
+    leftY = doc.y + 8;
     
-    if (partyDetails.name) { doc.text(partyDetails.name, PDF_SETTINGS.MARGIN.LEFT, leftY, { width: doc.page.width / 2 - 50 }); leftY = doc.y + 5; }
-    if (partyDetails.address) { doc.text(partyDetails.address, PDF_SETTINGS.MARGIN.LEFT, leftY, { width: doc.page.width / 2 - 50 }); leftY = doc.y + 5; }
-    if (partyDetails.gstin) { doc.text(`GSTIN/UIN: ${partyDetails.gstin}`, PDF_SETTINGS.MARGIN.LEFT, leftY); leftY = doc.y + 5; }
-    doc.text(`State Name: Gujarat, Code: 24`, PDF_SETTINGS.MARGIN.LEFT, leftY);
+    doc.font(FONT.BOLD).fontSize(10).fillColor(COLOR.TEXT_DARK)
+    if (partyDetails.name) {
+        doc.text(partyDetails.name, leftX, leftY);
+        leftY = doc.y + lineGap;
+    }
+     doc.font(FONT.NORMAL).fontSize(9).fillColor(COLOR.TEXT_MEDIUM)
+    if (partyDetails.address) {
+        doc.text(partyDetails.address, leftX, leftY, { width: doc.page.width / 2 - MARGIN.LEFT - sectionPadding });
+        leftY = doc.y + lineGap;
+    }
+    if (partyDetails.gstin) {
+        doc.text(`GSTIN/UIN: ${partyDetails.gstin}`, leftX, leftY, { width: doc.page.width / 2 - MARGIN.LEFT - sectionPadding });
+        leftY = doc.y + lineGap;
+    }
+    doc.text(`State Name: Gujarat, Code: 24`, leftX, leftY, { width: doc.page.width / 2 - MARGIN.LEFT - sectionPadding });
     const leftColumnBottom = doc.y;
 
     let rightY = sectionStartY;
@@ -247,19 +461,126 @@ function drawBillPartyAndMetaInfo(doc, context, billDetails) {
     ];
     
     metaData.forEach(row => {
-        if (!row.value) return; 
-        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK).text(row.label, rightColumnX, rightY, { width: labelWidth, align: 'left' });
-        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM).text(`: ${row.value}`, rightColumnX + labelWidth, rightY, { width: valueWidth, align: 'left' });
-        rightY += 15;
+        if (row.value) {
+            doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_DARK)
+               .text(row.label, rightColumnX, rightY, { width: labelWidth, align: 'left' });
+            doc.font(FONT.NORMAL).fontSize(9).fillColor(COLOR.TEXT_MEDIUM)
+               .text(`: ${row.value}`, rightColumnX + labelWidth, rightY, { width: valueWidth, align: 'left' });
+            rightY += 15;
+        }
     });
     const rightColumnBottom = rightY;
-    
+
     context.y = Math.max(leftColumnBottom, rightColumnBottom) + 25;
 }
 
+
+// <<< FIX: ALWAYS USE CURRENT SETTINGS FOR PDF GENERATION >>>
+app.get('/api/bills/:id/download-pdf', async (req, res) => {
+    try {
+        const { type } = req.query;
+        const billId = req.params.id;
+        if (!type) return sendResponse(res, 400, null, 'Invoice type query parameter is required.');
+
+        console.log(`--- API HIT: PDF Download for ${type} ID: ${billId} ---`);
+        const isProforma = type === 'PROFORMA_INVOICE';
+        const tableName = isProforma ? 'proforma_invoices' : 'bills';
+        const itemsTableName = isProforma ? 'proforma_invoice_items' : 'bill_items';
+
+        const [billRows] = await pool.query(`SELECT * FROM ${tableName} WHERE id = ?`, [billId]);
+        if (billRows.length === 0) return sendResponse(res, 404, null, 'Bill not found.');
+        
+        let billData = billRows[0];
+        
+        // --- FETCH LATEST SETTINGS ---
+        const [settingsRows] = await pool.query('SELECT * FROM seller_settings WHERE id = 1 LIMIT 1');
+        const latestSettings = settingsRows[0] || {};
+        
+        // --- OVERWRITE SAVED DETAILS WITH LATEST SETTINGS ---
+        billData.sellerDetails = latestSettings;
+        billData.partyDetails = JSON.parse(billData.partyDetails || '{}');
+        const [itemRows] = await pool.query(`SELECT * FROM ${itemsTableName} WHERE bill_id = ?`, [billId]);
+        billData.items = itemRows || [];
+        
+        const logoUrl = billData.sellerDetails.companyLogoUrl || "https://jetsetbranding.com/Webauto.jpg";
+        const logoBuffer = await getLogoBuffer(logoUrl);
+
+        const pdfBuffer = await generateBillPdfBuffer(billData, logoBuffer);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        const sanitizedBillNumber = String(billData.billNumber || billId).replace(/[^a-z0-9_.-]/gi, '_');
+        res.setHeader('Content-Disposition', `attachment; filename="${type}-${sanitizedBillNumber}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error(`--- ERROR generating PDF for download for bill ${req.params.id} ---:`, error.stack);
+        res.status(500).type('text/plain').send(`Failed to generate PDF. Error: ${error.message}`);
+    }
+});
+
+// <<< FIX: ALWAYS USE CURRENT SETTINGS FOR EMAIL >>>
+app.post('/api/bills/:id/send-email', async (req, res) => {
+    try {
+        const { to, cc, subject, type } = req.body;
+        const billId = req.params.id;
+        console.log(`--- API HIT: Sending Email for ${type} ID: ${billId} to ${to} ---`);
+
+        if (!to) return sendResponse(res, 400, null, 'Recipient email is required.');
+        if (!type) return sendResponse(res, 400, null, 'Invoice type is required.');
+
+        const isProforma = type === 'PROFORMA_INVOICE';
+        const tableName = isProforma ? 'proforma_invoices' : 'bills';
+        const itemsTableName = isProforma ? 'proforma_invoice_items' : 'bill_items';
+
+        const [billRows] = await pool.query(`SELECT * FROM ${tableName} WHERE id = ?`, [billId]);
+        if (billRows.length === 0) return sendResponse(res, 404, null, 'Bill not found.');
+
+        let billData = billRows[0];
+
+        // --- FETCH LATEST SETTINGS ---
+        const [settingsRows] = await pool.query('SELECT * FROM seller_settings WHERE id = 1 LIMIT 1');
+        const latestSettings = settingsRows[0] || {};
+
+        // --- OVERWRITE SAVED DETAILS WITH LATEST SETTINGS ---
+        billData.sellerDetails = latestSettings;
+        billData.partyDetails = JSON.parse(billData.partyDetails || '{}');
+        const [itemRows] = await pool.query(`SELECT * FROM ${itemsTableName} WHERE bill_id = ?`, [req.params.id]);
+        billData.items = itemRows || [];
+
+        const logoUrl = billData.sellerDetails.companyLogoUrl || "https://jetsetbranding.com/Webauto.jpg";
+        const logoBuffer = await getLogoBuffer(logoUrl);
+        const pdfBuffer = await generateBillPdfBuffer(billData, logoBuffer);
+
+        const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST,
+            port: process.env.SMTP_PORT,
+            secure: process.env.SMTP_SECURE === 'true',
+            auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS, },
+        });
+
+        const mailOptions = {
+            from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
+            to: to, cc: cc,
+            subject: subject || `${isProforma ? 'Proforma Invoice' : 'Invoice'} from ${billData.sellerDetails.name}`,
+            html: `Please find your ${isProforma ? 'proforma invoice' : 'invoice'} attached.`,
+            attachments: [{
+                filename: `${type}-${billData.billNumber}.pdf`,
+                content: pdfBuffer,
+                contentType: 'application/pdf',
+            }],
+        };
+
+        await transporter.sendMail(mailOptions);
+        sendResponse(res, 200, null, 'Email sent successfully.');
+
+    } catch (error) {
+        console.error(`--- ERROR sending email for bill ${req.params.id} ---:`, error.stack);
+        res.status(500).type('text/plain').send(`Failed to send email. Error: ${error.message}`);
+    }
+});
+
+
 function drawPageBorder(doc) { const {left, top, right, bottom} = doc.page.margins; doc.rect(left, top, doc.page.width - left - right, doc.page.height - top - bottom).stroke(PDF_SETTINGS.COLOR.BORDER_DARK); }
 function drawPageNumber(doc, currentPage, totalPages) { doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(8).fillColor("#777").text(`Page ${currentPage} of ${totalPages}`, PDF_SETTINGS.MARGIN.LEFT, doc.page.height - PDF_SETTINGS.MARGIN.BOTTOM + 10, { align: 'center' }); }
-
 function drawFooterContent(doc, billDetails) {
     const { sellerDetails } = billDetails;
     const { MARGIN, FONT, COLOR } = PDF_SETTINGS;
@@ -282,7 +603,6 @@ function drawFooterContent(doc, billDetails) {
     doc.font(FONT.BOLD).fontSize(9).fillColor(COLOR.TEXT_DARK).text('Terms & Conditions', leftColumnX, doc.y, { width: leftColumnWidth });
     doc.font(FONT.NORMAL).fontSize(8).fillColor(COLOR.TEXT_MEDIUM).text('1. Goods once sold will not be taken back. 2. Interest @18% p.a. will be charged on overdue bills. 3. Subject to local jurisdiction.', leftColumnX, doc.y, { width: leftColumnWidth });
 }
-
 function finalizePages(doc, billDetails) {
     const totalPages = doc.bufferedPageRange().count;
     for (let i = 0; i < totalPages; i++) {
@@ -292,7 +612,6 @@ function finalizePages(doc, billDetails) {
         drawPageNumber(doc, i + 1, totalPages);
     }
 }
-
 function checkAndHandlePageBreak(doc, context, neededHeight) {
     const pageBottom = doc.page.height - doc.page.margins.bottom;
     const footerHeight = 150; 
@@ -302,10 +621,9 @@ function checkAndHandlePageBreak(doc, context, neededHeight) {
     }
     return false;
 }
-
 function drawItemTable(doc, context, config, options) {
     const { headers, rows, colWidths, tableWidth } = config;
-    const { fontSize, rowPadding, isSinglePage } = options;
+    const { fontSize, rowPadding } = options;
     const headerHeight = 25;
 
     const drawTableHeader = () => {
@@ -324,7 +642,7 @@ function drawItemTable(doc, context, config, options) {
 
     rows.forEach((rowData, index) => {
         const rowHeight = Math.max(18, doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize).heightOfString(String(rowData.values[0]), { width: colWidths[0] - 10}) + (rowPadding * 2));
-        if (!isSinglePage && checkAndHandlePageBreak(doc, context, rowHeight)) drawTableHeader();
+        if (checkAndHandlePageBreak(doc, context, rowHeight)) drawTableHeader();
         const rowY = context.y;
         if (index % 2) doc.rect(PDF_SETTINGS.MARGIN.LEFT, rowY, tableWidth, rowHeight).fill(PDF_SETTINGS.COLOR.ROW_ALT_BG);
         let currentX = PDF_SETTINGS.MARGIN.LEFT;
@@ -339,7 +657,6 @@ function drawItemTable(doc, context, config, options) {
     });
     context.y += 10;
 }
-
 function getTableHeight(doc, config, options) {
     if (!config) return 0;
     let height = 0;
@@ -358,7 +675,6 @@ function getTableHeight(doc, config, options) {
     if (config.footer) height += 25;
     return height;
 }
-
 function getItemTableConfig(doc, billDetails, options) {
     const { fontSize } = options;
     doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize);
@@ -380,7 +696,7 @@ function getItemTableConfig(doc, billDetails, options) {
             `${index + 1}. ${item.description || ''}`,
             item.partNo || '-',
             item.hsnSac || '-',
-            item.quantity || '0',
+            (item.itemType === 'labour') ? '' : (item.quantity || '0'),
             Number(item.unitPrice || 0).toFixed(2),
             item.gstRate ? `${item.gstRate}%` : '0%',
             Number(item.taxableValue || 0).toFixed(2)
@@ -403,17 +719,25 @@ function drawTotalsSection(doc, context, billDetails, options) {
     const valueWidth = 80;
     const valueX = doc.page.width - PDF_SETTINGS.MARGIN.RIGHT - valueWidth;
     const labelX = valueX - labelWidth;
-
+    
+    const amountInWordsY = totalsY + 5;
     doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
-    doc.text('Description', labelX, totalsY);
-    doc.text('Amount', valueX, totalsY, { width: valueWidth, align: 'right' });
-    context.y += 15;
+    doc.text('Amount Chargeable (in words)', PDF_SETTINGS.MARGIN.LEFT, amountInWordsY);
+    
+    doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM);
+    doc.text(`${billDetails.amountInWords || ''} Only`, PDF_SETTINGS.MARGIN.LEFT, amountInWordsY + (fontSize + 4), { width: labelX - PDF_SETTINGS.MARGIN.LEFT - 20});
+    
+    let totalsTableY = totalsY;
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+    doc.text('Description', labelX, totalsTableY);
+    doc.text('Amount', valueX, totalsTableY, { width: valueWidth, align: 'right' });
+    totalsTableY += 15;
 
     const addTaxRow = (label, value) => {
         doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
-        doc.text(label, labelX, context.y, { width: labelWidth, align: 'left' });
-        doc.text(Number(value || 0).toFixed(2), valueX, context.y, { width: valueWidth, align: 'right' });
-        context.y += (fontSize + 3);
+        doc.text(label, labelX, totalsTableY, { width: labelWidth, align: 'left' });
+        doc.text(Number(value || 0).toFixed(2), valueX, totalsTableY, { width: valueWidth, align: 'right' });
+        totalsTableY += (fontSize + 3);
     };
 
     addTaxRow('Sub Total:', subTotal);
@@ -424,54 +748,71 @@ function drawTotalsSection(doc, context, billDetails, options) {
         addTaxRow('Round Off:', roundOff);
     }
     
-    context.y += 5;
-    doc.rect(labelX - 10, context.y, labelWidth + valueWidth + 20, 25).fill(PDF_SETTINGS.COLOR.GRAND_TOTAL_BG);
+    totalsTableY += 5;
+    doc.rect(labelX - 10, totalsTableY, labelWidth + valueWidth + 20, 25).fill(PDF_SETTINGS.COLOR.GRAND_TOTAL_BG);
     doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize + 2).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
-    doc.text('GRAND TOTAL', labelX, context.y + 7, { width: labelWidth, align: 'left' });
-    doc.text(Number(grandTotal || 0).toFixed(2), valueX, context.y + 7, { width: valueWidth, align: 'right' });
-    context.y += 30;
+    doc.text('GRAND TOTAL', labelX, totalsTableY + 7, { width: labelWidth, align: 'left' });
+    doc.text(Number(grandTotal || 0).toFixed(2), valueX, totalsTableY + 7, { width: valueWidth, align: 'right' });
     
-    const amountInWordsY = totalsY + 5;
-    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
-    doc.text('Amount Chargeable (in words)', PDF_SETTINGS.MARGIN.LEFT, amountInWordsY);
-    
-    doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM);
-    doc.text(`${billDetails.amountInWords || ''} Only`, PDF_SETTINGS.MARGIN.LEFT, amountInWordsY + (fontSize + 4), { width: labelX - PDF_SETTINGS.MARGIN.LEFT - 20});
+    context.y = totalsTableY + 30;
 }
 
 function getHsnSummaryConfig(doc, billDetails, tableWidth, options) {
     const { items } = billDetails;
     if (!items || items.length === 0) return null;
-    
-    const hsnSummaryData = {};
+
+    const gstRateSummary = {}; 
+
     items.forEach(item => {
-        const hsn = String(item.hsnSac || 'N/A');
-        if (!hsnSummaryData[hsn]) {
-            hsnSummaryData[hsn] = { taxableValue: 0, cgstAmount: 0, sgstAmount: 0, gstRate: item.gstRate };
+        const gstRate = item.gstRate || 0;
+        const hsnCode = item.hsnSac ? String(item.hsnSac) : null;
+
+        const groupKey = (hsnCode === '998729') ? `hsn_${hsnCode}` : `rate_${gstRate}`;
+
+        if (!gstRateSummary[groupKey]) {
+            gstRateSummary[groupKey] = {
+                taxableValue: 0,
+                cgstAmount: 0,
+                sgstAmount: 0,
+                hsnCodes: new Set(),
+                gstRate: gstRate 
+            };
         }
-        hsnSummaryData[hsn].taxableValue += Number(item.taxableValue || 0);
-        hsnSummaryData[hsn].cgstAmount += Number(item.cgstAmount || 0);
-        hsnSummaryData[hsn].sgstAmount += Number(item.sgstAmount || 0);
+
+        gstRateSummary[groupKey].taxableValue += Number(item.taxableValue || 0);
+        gstRateSummary[groupKey].cgstAmount += Number(item.cgstAmount || 0);
+        gstRateSummary[groupKey].sgstAmount += Number(item.sgstAmount || 0);
+        if (hsnCode) {
+            gstRateSummary[groupKey].hsnCodes.add(hsnCode);
+        }
     });
     
     const colWidths = [0.18, 0.20, 0.20, 0.20, 0.22].map(w => w * tableWidth);
 
-    const rows = Object.entries(hsnSummaryData).map(([hsn, data]) => ({
-        values: [
-            hsn,
-            data.taxableValue.toFixed(2),
-            { rate: `${(data.gstRate / 2).toFixed(1)}%`, amount: data.cgstAmount.toFixed(2) },
-            { rate: `${(data.gstRate / 2).toFixed(1)}%`, amount: data.sgstAmount.toFixed(2) },
-            (data.cgstAmount + data.sgstAmount).toFixed(2)
-        ]
-    }));
+    const rows = Object.values(gstRateSummary).map(data => {
+        const hsnString = Array.from(data.hsnCodes).join('/') || 'N/A';
+        const gstRate = data.gstRate;
+        const cgstRate = (Number(gstRate) / 2).toFixed(1);
+        const sgstRate = (Number(gstRate) / 2).toFixed(1);
+        
+        return {
+            values: [
+                hsnString,
+                data.taxableValue.toFixed(2),
+                { rate: `${cgstRate}%`, amount: data.cgstAmount.toFixed(2) },
+                { rate: `${sgstRate}%`, amount: data.sgstAmount.toFixed(2) },
+                (data.cgstAmount + data.sgstAmount).toFixed(2)
+            ]
+        };
+    });
 
-    const hsnTotals = Object.values(hsnSummaryData).reduce((acc, data) => ({
-        taxableValue: acc.taxableValue + data.taxableValue,
-        cgstAmount: acc.cgstAmount + data.cgstAmount,
-        sgstAmount: acc.sgstAmount + data.sgstAmount,
-        totalTax: acc.totalTax + data.cgstAmount + data.sgstAmount
-    }), { taxableValue: 0, cgstAmount: 0, sgstAmount: 0, totalTax: 0 });
+    const hsnTotals = Object.values(gstRateSummary).reduce((acc, data) => {
+        acc.taxableValue += data.taxableValue;
+        acc.cgstAmount += data.cgstAmount;
+        acc.sgstAmount += data.sgstAmount;
+        acc.totalTax += (data.cgstAmount + data.sgstAmount);
+        return acc;
+    }, { taxableValue: 0, cgstAmount: 0, sgstAmount: 0, totalTax: 0 });
 
     const footer = [
         "TOTAL",
@@ -484,11 +825,8 @@ function getHsnSummaryConfig(doc, billDetails, tableWidth, options) {
     return { rows, colWidths, footer, title: "HSN/SAC Summary", isComplexHeader: true, tableWidth };
 }
 
-
 function drawHsnSummary(doc, context, config, options) {
     if (!config) return;
-
-    if(!options.isSinglePage) checkAndHandlePageBreak(doc, context, getTableHeight(doc, config, options) + 40);
     
     context.y += 15;
     
@@ -507,7 +845,6 @@ function drawHsnSummary(doc, context, config, options) {
 
     const cellPadding = 5;
     const headerHeight = 35;
-    const rowHeight = 20;
     
     const headerY = context.y;
     doc.rect(startX, headerY, tableWidth, headerHeight).fill(PDF_SETTINGS.COLOR.TABLE_HEADER_BG);
@@ -537,32 +874,40 @@ function drawHsnSummary(doc, context, config, options) {
     context.y += headerHeight;
 
     rows.forEach((rowData, index) => {
+        const hsnCellText = String(rowData.values[0] || '');
+        const firstColWidth = colWidths[0] - (cellPadding * 2);
+        const textHeight = doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize - 0.5).heightOfString(hsnCellText, {
+            width: firstColWidth
+        });
+        const dynamicRowHeight = Math.max(20, textHeight + (cellPadding * 2));
+
         const rowY = context.y;
         if (index % 2) {
-            doc.rect(startX, rowY, tableWidth, rowHeight).fill(PDF_SETTINGS.COLOR.ROW_ALT_BG);
+            doc.rect(startX, rowY, tableWidth, dynamicRowHeight).fill(PDF_SETTINGS.COLOR.ROW_ALT_BG);
         }
         
         doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(fontSize - 0.5).fillColor(PDF_SETTINGS.COLOR.TEXT_DARK);
+        const vAlign = rowY + cellPadding;
         currentX = startX;
 
-        doc.text(String(rowData.values[0] || ''), currentX + cellPadding, rowY + 6, { width: colWidths[0] - (cellPadding * 2), align: 'center' });
+        doc.text(hsnCellText, currentX + cellPadding, vAlign, { width: firstColWidth, align: 'center' });
         currentX += colWidths[0];
 
-        doc.text(String(rowData.values[1] || ''), currentX + cellPadding, rowY + 6, { width: colWidths[1] - (cellPadding * 2), align: 'center' });
+        doc.text(String(rowData.values[1] || ''), currentX + cellPadding, vAlign, { width: colWidths[1] - (cellPadding * 2), align: 'center' });
         currentX += colWidths[1];
 
-        doc.text(String(rowData.values[2].rate || ''), currentX, rowY + 6, { width: colWidths[2] / 2, align: 'center' });
-        doc.text(String(rowData.values[2].amount || ''), currentX + colWidths[2] / 2, rowY + 6, { width: colWidths[2] / 2 - cellPadding, align: 'right' });
+        doc.text(String(rowData.values[2].rate || ''), currentX, vAlign, { width: colWidths[2] / 2, align: 'center' });
+        doc.text(String(rowData.values[2].amount || ''), currentX + colWidths[2] / 2, vAlign, { width: colWidths[2] / 2 - cellPadding, align: 'right' });
         currentX += colWidths[2];
 
-        doc.text(String(rowData.values[3].rate || ''), currentX, rowY + 6, { width: colWidths[3] / 2, align: 'center' });
-        doc.text(String(rowData.values[3].amount || ''), currentX + colWidths[3] / 2, rowY + 6, { width: colWidths[3] / 2 - cellPadding, align: 'right' });
+        doc.text(String(rowData.values[3].rate || ''), currentX, vAlign, { width: colWidths[3] / 2, align: 'center' });
+        doc.text(String(rowData.values[3].amount || ''), currentX + colWidths[3] / 2, vAlign, { width: colWidths[3] / 2 - cellPadding, align: 'right' });
         currentX += colWidths[3];
 
-        doc.text(String(rowData.values[4] || ''), currentX + cellPadding, rowY + 6, { width: colWidths[4] - (cellPadding * 2), align: 'center' });
+        doc.text(String(rowData.values[4] || ''), currentX + cellPadding, vAlign, { width: colWidths[4] - (cellPadding * 2), align: 'center' });
 
-        doc.moveTo(startX, rowY + rowHeight).lineTo(startX + tableWidth, rowY + rowHeight).stroke(PDF_SETTINGS.COLOR.BORDER_LIGHT);
-        context.y += rowHeight;
+        doc.moveTo(startX, rowY + dynamicRowHeight).lineTo(startX + tableWidth, rowY + dynamicRowHeight).stroke(PDF_SETTINGS.COLOR.BORDER_LIGHT);
+        context.y += dynamicRowHeight;
     });
 
     const footerY = context.y;
@@ -588,7 +933,6 @@ function drawHsnSummary(doc, context, config, options) {
 
     context.y += footerHeight;
 }
-
 async function getLogoBuffer(url) {
     if (!url) return null;
     try {
@@ -606,88 +950,6 @@ async function getLogoBuffer(url) {
     }
     return null;
 }
-
-// --- PDF Download Endpoint ---
-app.get('/api/bills/:id/download-pdf', async (req, res) => {
-    try {
-        console.log(`--- API HIT: PDF Download for Bill ID: ${req.params.id} ---`);
-        const [billRows] = await pool.query('SELECT * FROM bills WHERE id = ?', [req.params.id]);
-        if (billRows.length === 0) return sendResponse(res, 404, null, 'Bill not found.');
-        
-        let billData = billRows[0];
-        billData.sellerDetails = JSON.parse(billData.sellerDetails || '{}');
-        billData.partyDetails = JSON.parse(billData.partyDetails || '{}');
-        const [itemRows] = await pool.query('SELECT * FROM bill_items WHERE bill_id = ?', [req.params.id]);
-        billData.items = itemRows || [];
-        
-        const logoUrl = billData.sellerDetails.companyLogoUrl || "https://jetsetbranding.com/Webauto.jpg";
-        const logoBuffer = await getLogoBuffer(logoUrl);
-
-        const pdfBuffer = await generateBillPdfBuffer(billData, logoBuffer);
-
-        res.setHeader('Content-Type', 'application/pdf');
-        const sanitizedBillNumber = String(billData.billNumber || req.params.id).replace(/[^a-z0-9_.-]/gi, '_');
-        res.setHeader('Content-Disposition', `attachment; filename="Invoice-${sanitizedBillNumber}.pdf"`);
-        res.send(pdfBuffer);
-    } catch (error) {
-        console.error(`--- ERROR generating PDF for download for bill ${req.params.id} ---:`, error.stack);
-        res.status(500).type('text/plain').send(`Failed to generate PDF. Error: ${error.message}`);
-    }
-});
-
-// --- Send Email API ---
-app.post('/api/bills/:id/send-email', async (req, res) => {
-    try {
-        const { to, cc, subject } = req.body;
-        const billId = req.params.id;
-        console.log(`--- API HIT: Sending Email for Bill ID: ${billId} to ${to} ---`);
-
-        if (!to) return sendResponse(res, 400, null, 'Recipient email is required.');
-
-        const [billRows] = await pool.query('SELECT * FROM bills WHERE id = ?', [billId]);
-        if (billRows.length === 0) return sendResponse(res, 404, null, 'Bill not found.');
-
-        let billData = billRows[0];
-        billData.sellerDetails = JSON.parse(billData.sellerDetails || '{}');
-        billData.partyDetails = JSON.parse(billData.partyDetails || '{}');
-        const [itemRows] = await pool.query('SELECT * FROM bill_items WHERE bill_id = ?', [req.params.id]);
-        billData.items = itemRows || [];
-
-        const logoUrl = billData.sellerDetails.companyLogoUrl || "https://jetsetbranding.com/Webauto.jpg";
-        const logoBuffer = await getLogoBuffer(logoUrl);
-        const pdfBuffer = await generateBillPdfBuffer(billData, logoBuffer);
-
-        const transporter = nodemailer.createTransport({
-            host: process.env.SMTP_HOST,
-            port: process.env.SMTP_PORT,
-            secure: process.env.SMTP_SECURE === 'true',
-            auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS,
-            },
-        });
-
-        const mailOptions = {
-            from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
-            to: to,
-            cc: cc,
-            subject: subject || `Invoice from ${billData.sellerDetails.name}`,
-            html: `Please find your invoice attached.`,
-            attachments: [{
-                filename: `Invoice-${billData.billNumber}.pdf`,
-                content: pdfBuffer,
-                contentType: 'application/pdf',
-            }],
-        };
-
-        await transporter.sendMail(mailOptions);
-        sendResponse(res, 200, null, 'Email sent successfully.');
-
-    } catch (error) {
-        console.error(`--- ERROR sending email for bill ${req.params.id} ---:`, error.stack);
-        res.status(500).type('text/plain').send(`Failed to send email. Error: ${error.message}`);
-    }
-});
 
 // --- Server Startup ---
 async function startServer() {
