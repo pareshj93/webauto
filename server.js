@@ -41,12 +41,8 @@ async function initializeDatabasePool() {
 }
 
 // --- Middleware & Utilities ---
-// *** FIX: Updated CORS to specifically allow your Netlify frontend ***
-app.use(cors({
-    origin: 'https://backenweb.netlify.app',
-    methods: 'GET,POST,PUT,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type,Authorization'
-}));
+// *** FIX: Enabled CORS for all origins to resolve deployment issues ***
+app.use(cors());
 app.use(express.json());
 const sendResponse = (res, statusCode, data, message, meta) => res.status(statusCode).json({ success: statusCode < 400, data, message, meta });
 app.use((req, res, next) => { if (!pool) return sendResponse(res, 503, null, "Database service unavailable."); next(); });
