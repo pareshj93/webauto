@@ -41,8 +41,9 @@ async function initializeDatabasePool() {
 }
 
 // --- Middleware & Utilities ---
+// *** FIX: Updated CORS to specifically allow your Netlify frontend ***
 app.use(cors({
-    origin: '*',
+    origin: 'https://backenweb.netlify.app',
     methods: 'GET,POST,PUT,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type,Authorization'
 }));
@@ -475,7 +476,6 @@ function drawBillPartyAndMetaInfo(doc, context, billDetails) {
 }
 
 
-// <<< FIX: ALWAYS USE CURRENT SETTINGS FOR PDF GENERATION >>>
 app.get('/api/bills/:id/download-pdf', async (req, res) => {
     try {
         const { type } = req.query;
@@ -492,11 +492,9 @@ app.get('/api/bills/:id/download-pdf', async (req, res) => {
         
         let billData = billRows[0];
         
-        // --- FETCH LATEST SETTINGS ---
         const [settingsRows] = await pool.query('SELECT * FROM seller_settings WHERE id = 1 LIMIT 1');
         const latestSettings = settingsRows[0] || {};
         
-        // --- OVERWRITE SAVED DETAILS WITH LATEST SETTINGS ---
         billData.sellerDetails = latestSettings;
         billData.partyDetails = JSON.parse(billData.partyDetails || '{}');
         const [itemRows] = await pool.query(`SELECT * FROM ${itemsTableName} WHERE bill_id = ?`, [billId]);
@@ -517,7 +515,6 @@ app.get('/api/bills/:id/download-pdf', async (req, res) => {
     }
 });
 
-// <<< FIX: ALWAYS USE CURRENT SETTINGS FOR EMAIL >>>
 app.post('/api/bills/:id/send-email', async (req, res) => {
     try {
         const { to, cc, subject, type } = req.body;
@@ -536,11 +533,9 @@ app.post('/api/bills/:id/send-email', async (req, res) => {
 
         let billData = billRows[0];
 
-        // --- FETCH LATEST SETTINGS ---
         const [settingsRows] = await pool.query('SELECT * FROM seller_settings WHERE id = 1 LIMIT 1');
         const latestSettings = settingsRows[0] || {};
 
-        // --- OVERWRITE SAVED DETAILS WITH LATEST SETTINGS ---
         billData.sellerDetails = latestSettings;
         billData.partyDetails = JSON.parse(billData.partyDetails || '{}');
         const [itemRows] = await pool.query(`SELECT * FROM ${itemsTableName} WHERE bill_id = ?`, [req.params.id]);
