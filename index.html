@@ -123,7 +123,20 @@
                     <div><label for="sellerBankName" class="block text-sm font-medium text-gray-700">Bank Name</label><input type="text" id="sellerBankName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></div>
                     <div><label for="sellerAccountNo" class="block text-sm font-medium text-gray-700">Account No.</label><input type="text" id="sellerAccountNo" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></div>
                     <div><label for="sellerIfsc" class="block text-sm font-medium text-gray-700">IFSC Code</label><input type="text" id="sellerIfsc" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></div>
-                    <div><label for="nextBillNumberPrefix" class="block text-sm font-medium text-gray-700">Bill Prefix</label><input type="text" id="nextBillNumberPrefix" placeholder="e.g., INV-" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"><label for="nextBillNumber" class="block text-sm font-medium text-gray-700 mt-2">Next Bill No.</label><input type="number" id="nextBillNumber" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" required></div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="nextBillNumberPrefix" class="block text-sm font-medium text-gray-700">Tax Invoice Prefix</label>
+                            <input type="text" id="nextBillNumberPrefix" placeholder="e.g., INV-" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                            <label for="nextBillNumber" class="block text-sm font-medium text-gray-700 mt-2">Next Tax Invoice No.</label>
+                            <input type="number" id="nextBillNumber" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" required>
+                        </div>
+                        <div>
+                            <label for="nextProformaNumberPrefix" class="block text-sm font-medium text-gray-700">Proforma Invoice Prefix</label>
+                            <input type="text" id="nextProformaNumberPrefix" placeholder="e.g., PI-" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                            <label for="nextProformaNumber" class="block text-sm font-medium text-gray-700 mt-2">Next Proforma No.</label>
+                            <input type="number" id="nextProformaNumber" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" required>
+                        </div>
+                    </div>
                     <div><label for="defaultTerms" class="block text-sm font-medium text-gray-700">Default Terms</label><textarea id="defaultTerms" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></textarea></div>
                     <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow">Save Settings</button>
                 </form>
@@ -164,6 +177,13 @@
                 <form id="billForm" class="space-y-4">
                     <input type="hidden" id="billId">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg shadow">
+                        <div>
+                            <label for="invoiceType" class="block text-sm font-medium">Invoice Type</label>
+                            <select id="invoiceType" class="mt-1 block w-full p-2 border-gray-300 rounded-md shadow-sm">
+                                <option value="TAX_INVOICE" selected>Tax Invoice</option>
+                                <option value="PROFORMA_INVOICE">Proforma Invoice</option>
+                            </select>
+                        </div>
                         <div><label for="billNumber" class="block text-sm font-medium">Bill No.</label><input type="text" id="billNumber" class="mt-1 block w-full p-2 bg-gray-200" readonly></div>
                         <div><label for="billDate" class="block text-sm font-medium">Date</label><input type="date" id="billDate" class="mt-1 block w-full p-2" required></div>
                         <div class="md:col-span-2"><label for="billVehicleModelNo" class="block text-sm font-medium">Model No.</label><input type="text" id="billVehicleModelNo" class="mt-1 block w-full p-2"></div>
@@ -177,13 +197,17 @@
                             <div><label for="billPartyName" class="block text-sm font-medium">Party Name</label><input type="text" id="billPartyName" class="mt-1 block w-full p-2" required></div>
                             <div><label for="billPartyEmail" class="block text-sm font-medium">Party Email</label><input type="email" id="billPartyEmail" class="mt-1 block w-full p-2"></div>
                             <div><label for="billPartyAddress" class="block text-sm font-medium">Party Address</label><textarea id="billPartyAddress" rows="2" class="mt-1 block w-full p-2"></textarea></div>
-                            <div><label for="billPartyGstin" class="block text-sm font-medium">Party GSTIN</label><input type="text" id="billPartyGstin" class="mt-1 block w-full rounded-md border-gray-300 p-2"></div>
-                            <div class="mt-2 flex items-center"><input type="checkbox" id="savePartyDetails" class="h-4 w-4"><label for="savePartyDetails" class="ml-2 text-sm">Save/Update Party Details</label></div>
+                            <div><label for="billPartyGstin" class="block text-sm font-medium">Party GSTIN</label><input type="text" id="billPartyGstin" class="mt-1 block w-full p-2"></div>
+                            <div class="mt-2 flex items-center">
+                                <input type="checkbox" id="savePartyDetails" class="h-4 w-4">
+                                <label for="savePartyDetails" class="ml-2 text-sm">Save/Update Party Details (Only for Tax Invoice)</label>
+                            </div>
                         </div>
                     </div>
 
                     <div class="p-4 bg-gray-50 rounded-lg shadow">
                         <h3 class="text-md font-semibold mb-3">Items</h3>
+                        <p class="text-xs text-gray-500 mb-3">Note: Item details from Proforma Invoices will not be added to the master product list.</p>
                         <div id="billItemsContainer" class="space-y-3"></div>
                         <div class="mt-4 flex flex-wrap gap-2">
                             <button type="button" onclick="App.addLaborItem('Remove & Refitting')" class="bg-cyan-500 text-white font-semibold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-wrench mr-1"></i> Add R/R</button>
@@ -209,11 +233,11 @@
                 </form>
             </div>
 
-            <div id="billsListView" class="view"><h2 class="text-lg font-semibold mb-3">Saved Bills</h2><div id="billsListContainer" class="space-y-3"></div></div>
+            <div id="billsListView" class="view"><h2 class="text-lg font-semibold mb-3">Saved Invoices</h2><div id="billsListContainer" class="space-y-3"></div></div>
 
             <div id="viewBillView" class="view">
                 <div class="flex flex-wrap justify-between items-center mb-4 gap-2 no-print">
-                    <h2 class="text-lg font-semibold">Bill Preview</h2>
+                    <h2 class="text-lg font-semibold">Invoice Preview</h2>
                     <div class="flex flex-wrap space-x-2 gap-y-2">
                         <button onclick="App.downloadBillAsPdf()" class="bg-red-500 text-white font-bold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-file-pdf mr-1"></i> Download PDF</button>
                         <button onclick="App.sendBillByEmail()" class="bg-purple-500 text-white font-bold py-2 px-3 rounded-md text-sm shadow"><i class="fas fa-envelope mr-1"></i> Send Email</button>
@@ -238,7 +262,7 @@
     <div id="addProductFromSavedModal" class="modal no-print"><div class="modal-content"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Select Product</h3><span class="close-button" onclick="App.closeAddProductFromSavedModal()">&times;</span></div><div class="mb-3"><input type="search" id="modalProductSearchInput" placeholder="Search saved products..." class="w-full p-2 border"></div><div id="savedProductsSelectionList" class="max-h-60 overflow-y-auto border p-2"></div><div id="modalProductPaginationControls" class="mt-3 flex justify-between items-center"></div><button onclick="App.closeAddProductFromSavedModal()" class="mt-4 bg-gray-500 text-white font-bold py-2 px-4 rounded-md w-full shadow">Close</button></div></div>
 
     <script type="module">
-        const API_BASE_URL = 'https://webautofinal.onrender.com';
+        const API_BASE_URL = 'http://localhost:3000';
 
         let currentView = 'dashboardView';
         let sellerSettings = null;
@@ -292,6 +316,7 @@
                 document.getElementById('productForm').addEventListener('submit', App.saveProduct);
                 document.getElementById('billForm').addEventListener('submit', App.saveBill);
                 document.getElementById('selectParty').addEventListener('change', App.populatePartyDetailsForBill);
+                document.getElementById('invoiceType').addEventListener('change', App.updateBillNumberBasedOnType);
                 document.getElementById('confirmActionButton').addEventListener('click', () => { if (confirmActionCallback) confirmActionCallback(); App.closeConfirmationModal(); });
                 document.getElementById('confirmCancelButton').addEventListener('click', App.closeConfirmationModal);
                 document.getElementById('partySearchInput').addEventListener('input', (e) => App.filterAndRenderParties(e.target.value));
@@ -307,7 +332,6 @@
                 const password = document.getElementById('password').value;
                 const errorEl = document.getElementById('loginError');
 
-                // NOTE: This is a simple front-end check. Real security requires a backend authentication endpoint.
                 if (username === 'admin' && password === 'admin') {
                     document.getElementById('loginView').style.display = 'none';
                     document.getElementById('appContainer').style.display = 'block';
@@ -367,15 +391,23 @@
             loadSettings: async () => {
                 try {
                     const response = await apiRequest('/settings');
-                    sellerSettings = response.data || { name: '', address: '', gstin: '', email: '', companyLogoUrl: '', bankName: '', accountNo: '', ifsc: '', terms: '', nextBillNumber: 1, nextBillNumberPrefix: 'INV-' };
-                    Object.keys(sellerSettings).forEach(key => { 
-                        const elId = key === 'defaultTerms' ? key : `seller${key.charAt(0).toUpperCase() + key.slice(1)}`;
-                        const el = document.getElementById(elId); 
-                        if (el) el.value = sellerSettings[key] || (key === 'nextBillNumber' ? 1 : (key === 'nextBillNumberPrefix' ? 'INV-' : ''));
-                    });
-                     if (sellerSettings.nextBillNumber === undefined || sellerSettings.nextBillNumber === null) document.getElementById('nextBillNumber').value = 1;
-                     if (sellerSettings.nextBillNumberPrefix === undefined || sellerSettings.nextBillNumberPrefix === null) document.getElementById('nextBillNumberPrefix').value = 'INV-';
-                     if (document.getElementById('sellerCompanyLogoUrl')) document.getElementById('sellerCompanyLogoUrl').value = sellerSettings.companyLogoUrl || '';
+                    sellerSettings = response.data || {};
+                    const defaults = { name: '', address: '', gstin: '', email: '', companyLogoUrl: '', bankName: '', accountNo: '', ifsc: '', terms: '', nextBillNumber: 1, nextBillNumberPrefix: 'INV-', nextProformaNumber: 1, nextProformaNumberPrefix: 'PERFORMA-' };
+                    sellerSettings = { ...defaults, ...sellerSettings };
+                    
+                    document.getElementById('sellerName').value = sellerSettings.name;
+                    document.getElementById('sellerAddress').value = sellerSettings.address;
+                    document.getElementById('sellerGstin').value = sellerSettings.gstin;
+                    document.getElementById('sellerEmail').value = sellerSettings.email;
+                    document.getElementById('sellerCompanyLogoUrl').value = sellerSettings.companyLogoUrl;
+                    document.getElementById('sellerBankName').value = sellerSettings.bankName;
+                    document.getElementById('sellerAccountNo').value = sellerSettings.accountNo;
+                    document.getElementById('sellerIfsc').value = sellerSettings.ifsc;
+                    document.getElementById('defaultTerms').value = sellerSettings.terms;
+                    document.getElementById('nextBillNumber').value = sellerSettings.nextBillNumber;
+                    document.getElementById('nextBillNumberPrefix').value = sellerSettings.nextBillNumberPrefix;
+                    document.getElementById('nextProformaNumber').value = sellerSettings.nextProformaNumber;
+                    document.getElementById('nextProformaNumberPrefix').value = sellerSettings.nextProformaNumberPrefix;
 
                 } catch (error) { console.error("Error loading settings:", error); }
             },
@@ -384,13 +416,20 @@
                 const settingsData = {
                     name: document.getElementById('sellerName').value.trim(), address: document.getElementById('sellerAddress').value.trim(),
                     gstin: document.getElementById('sellerGstin').value.trim().toUpperCase(), email: document.getElementById('sellerEmail').value.trim(),
-                    companyLogoUrl: document.getElementById('sellerCompanyLogoUrl').value.trim(), // Save logo URL
+                    companyLogoUrl: document.getElementById('sellerCompanyLogoUrl').value.trim(),
                     bankName: document.getElementById('sellerBankName').value.trim(), accountNo: document.getElementById('sellerAccountNo').value.trim(),
                     ifsc: document.getElementById('sellerIfsc').value.trim().toUpperCase(), terms: document.getElementById('defaultTerms').value.trim(),
                     nextBillNumber: parseInt(document.getElementById('nextBillNumber').value) || 1,
                     nextBillNumberPrefix: document.getElementById('nextBillNumberPrefix').value.trim() || 'INV-',
+                    nextProformaNumber: parseInt(document.getElementById('nextProformaNumber').value) || 1,
+                    nextProformaNumberPrefix: document.getElementById('nextProformaNumberPrefix').value.trim() || 'PERFORMA-',
                 };
-                try { const response = await apiRequest('/settings', 'POST', settingsData); sellerSettings = response.data; App.showMessage("Settings saved!"); App.navigateTo('dashboardView'); } 
+                try { 
+                    const response = await apiRequest('/settings', 'POST', settingsData); 
+                    sellerSettings = response.data; 
+                    App.showMessage("Settings saved!"); 
+                    App.navigateTo('dashboardView'); 
+                } 
                 finally { App.hideLoading(); }
             },
             showPartyForm: (party = null) => {
@@ -478,10 +517,10 @@
                         App.loadProductsForModal(1, document.getElementById('modalProductSearchInput').value); 
                     } else {
                         App.renderProducts(response.data || []);
-                        if (response.pagination) {
-                            currentProductPage = response.pagination.currentPage;
-                            totalProductPages = response.pagination.totalPages;
-                            App.renderProductPaginationControls(response.pagination);
+                        if (response.meta) {
+                            currentProductPage = response.meta.currentPage;
+                            totalProductPages = response.meta.totalPages;
+                            App.renderProductPaginationControls(response.meta);
                         } else { App.renderProductPaginationControls({currentPage:1, totalPages:1, totalProducts: (response.data || []).length }); }
                     }
                 } catch (error) { console.error("Error loading products:", error); if (!loadAllForModal) {App.renderProducts([]); App.renderProductPaginationControls({currentPage:1, totalPages:1});} }
@@ -539,12 +578,26 @@
             
             prepareNewBillForm: () => {
                 document.getElementById('billForm').reset(); document.getElementById('billItemsContainer').innerHTML = ''; itemCounter = 0;
-                if (sellerSettings && sellerSettings.nextBillNumber !== undefined) {
-                    document.getElementById('billNumber').value = `${sellerSettings.nextBillNumberPrefix || 'INV-'}${String(sellerSettings.nextBillNumber).padStart(3, '0')}`;
-                } else { document.getElementById('billNumber').value = 'INV-001'; }
+                document.getElementById('invoiceType').value = 'TAX_INVOICE';
+                App.updateBillNumberBasedOnType();
                 document.getElementById('billDate').valueAsDate = new Date();
                 App.updateBillSummary(); ['Name', 'Email', 'Address', 'Gstin'].forEach(f => document.getElementById(`billParty${f}`).value = '');
                 document.getElementById('selectParty').value = ""; document.getElementById('savePartyDetails').checked = false; document.getElementById('billId').value = '';
+            },
+            updateBillNumberBasedOnType: () => {
+                if (!sellerSettings) return;
+                const type = document.getElementById('invoiceType').value;
+                const billNumberInput = document.getElementById('billNumber');
+                
+                if (type === 'PROFORMA_INVOICE') {
+                    const prefix = sellerSettings.nextProformaNumberPrefix || 'PERFORMA-';
+                    const number = sellerSettings.nextProformaNumber || 1;
+                    billNumberInput.value = `${prefix}${String(number).padStart(3, '0')}`;
+                } else { // TAX_INVOICE
+                    const prefix = sellerSettings.nextBillNumberPrefix || 'INV-';
+                    const number = sellerSettings.nextBillNumber || 1;
+                    billNumberInput.value = `${prefix}${String(number).padStart(3, '0')}`;
+                }
             },
             addLaborItem: (description) => {
                 App.addBillItem({ description, hsnSac: '998729', gstRate: 18, unitPrice: 0, quantity: 1, itemType: 'labour' });
@@ -608,27 +661,24 @@
                     const unitP = parseFloat(row.querySelector('input[name="itemUnitPrice"]').value) || 0;
                     const gst = parseFloat(row.querySelector('input[name="itemGstRate"]').value) || 0;
                     
-                    if (desc && qty > 0 && unitP >= 0) { 
+                    if (desc) { 
                         const taxVal = qty * unitP;
                         const cgstAmt = gst > 0 ? (taxVal * (gst / 2)) / 100 : 0;
                         const sgstAmt = gst > 0 ? (taxVal * (gst / 2)) / 100 : 0;
-                        items.push({ 
-                            description: desc, partNo: partNo, hsnSac: hsn, 
-                            quantity: qty, unitPrice: unitP, gstRate: gst, 
-                            taxableValue: taxVal, cgstAmount: cgstAmt, sgstAmount: sgstAmt, 
-                            totalAmount: taxVal + cgstAmt + sgstAmt,
-                            removeRefitting: 0, dentingAcGas: 0, painting: 0 
-                        });
+                        items.push({ description: desc, partNo: partNo, hsnSac: hsn, quantity: qty, unitPrice: unitP, gstRate: gst, taxableValue: taxVal, cgstAmount: cgstAmt, sgstAmount: sgstAmt, totalAmount: taxVal + cgstAmt + sgstAmt });
                         calcSub += taxVal; calcCgst += cgstAmt; calcSgst += sgstAmt;
                     }
                 });
-                if (items.length === 0) { App.showMessage("Add items to bill.", true); App.hideLoading(); return; }
+
+                if (items.length === 0) { App.showMessage("Add at least one item to the bill.", true); App.hideLoading(); return; }
+
                 const gtBeforeRound = calcSub + calcCgst + calcSgst;
                 const finalGT = Math.round(gtBeforeRound);
                 const finalRoundOff = finalGT - gtBeforeRound;
 
                 const billData = {
                     billNumber: document.getElementById('billNumber').value, date: document.getElementById('billDate').value,
+                    invoice_type: document.getElementById('invoiceType').value,
                     vehicleModelNo: document.getElementById('billVehicleModelNo').value.trim(),
                     reference: document.getElementById('billReference').value.trim() || '',
                     sellerDetails: sellerSettings,
@@ -638,17 +688,27 @@
                 const billId = document.getElementById('billId').value;
                 try {
                     const response = await apiRequest(billId ? `/bills/${billId}` : '/bills', billId ? 'PUT' : 'POST', billData);
+                    
+                    // Increment the correct counter only on new invoice creation
                     if (!billId && sellerSettings) { 
-                        const newNext = (parseInt(sellerSettings.nextBillNumber) || 0) + 1;
+                        let newSettings = { ...sellerSettings };
+                        if (billData.invoice_type === 'PROFORMA_INVOICE') {
+                            newSettings.nextProformaNumber = (parseInt(sellerSettings.nextProformaNumber) || 0) + 1;
+                        } else {
+                            newSettings.nextBillNumber = (parseInt(sellerSettings.nextBillNumber) || 0) + 1;
+                        }
                         try { 
-                           await apiRequest('/settings', 'POST', { ...sellerSettings, nextBillNumber: newNext });
-                           sellerSettings.nextBillNumber = newNext; 
+                           await apiRequest('/settings', 'POST', newSettings);
+                           sellerSettings = newSettings;
                         } catch (settingsError) { console.warn("Could not update next bill number in settings:", settingsError); }
                     }
-                    App.showMessage(billId ? "Bill updated." : "Bill saved.");
+                    App.showMessage(billId ? "Invoice updated." : "Invoice saved.");
                     currentPreviewBillData = { ...billData, id: response.data?.id || billId };
                     App.generateBillPreview(currentPreviewBillData.id, currentPreviewBillData);
-                    App.navigateTo('viewBillView', `Bill: ${currentPreviewBillData.billNumber}`); App.prepareNewBillForm(); App.loadBills(); App.loadProducts(1,'',true);
+                    App.navigateTo('viewBillView', `Bill: ${currentPreviewBillData.billNumber}`); App.prepareNewBillForm(); App.loadBills(); 
+                    if (billData.invoice_type === 'TAX_INVOICE') {
+                        App.loadProducts(1,'',true);
+                    }
                 } finally { App.hideLoading(); }
             },
             loadBills: async () => { 
@@ -657,24 +717,38 @@
                     const response = await apiRequest('/bills');
                     const billsData = response.data || [];
                     const listEl = document.getElementById('billsListContainer'); listEl.innerHTML = '';
-                    if (billsData.length === 0) { listEl.innerHTML = '<p class="text-gray-500 p-3 text-center">No bills saved yet.</p>'; App.hideLoading(); return; } 
-                    billsData.sort((a,b) => new Date(b.date || 0) - new Date(a.date || 0) || (b.billNumber || '').localeCompare(a.billNumber || '')).forEach(bill => {
+                    if (billsData.length === 0) { listEl.innerHTML = '<p class="text-gray-500 p-3 text-center">No invoices saved yet.</p>'; App.hideLoading(); return; } 
+                    
+                    billsData.forEach(bill => {
                         const div = document.createElement('div'); div.className = 'p-4 bg-white border rounded-lg shadow-sm';
                         const partyName = bill.partyDetails?.name || 'N/A';
                         const billDate = bill.date ? new Date(bill.date).toLocaleDateString() : 'N/A';
-                        div.innerHTML = `<div class="flex justify-between items-center"><div class="mb-2 sm:mb-0"><p class="font-semibold text-indigo-700">Bill: ${bill.billNumber||'N/A'}</p><p class="text-sm">To: ${partyName} - Date: ${billDate}</p><p class="text-md font-bold">Total: ₹${(parseFloat(bill.grandTotal)||0).toFixed(2)}</p></div><div class="flex space-x-2"><button onclick="App.viewBill('${bill.id}')" class="text-green-500 p-1"><i class="fas fa-eye"></i></button><button onclick="App.editBill('${bill.id}')" class="text-blue-500 p-1"><i class="fas fa-edit"></i></button><button onclick="App.deleteBill('${bill.id}', '${(bill.billNumber||'this bill').replace(/'/g, "\\'")}')" class="text-red-500 p-1"><i class="fas fa-trash"></i></button></div></div>`;
+                        const isProforma = bill.invoice_type === 'PROFORMA_INVOICE';
+                        const typeLabel = isProforma ? `<span class="text-xs bg-yellow-200 text-yellow-800 font-medium mr-2 px-2.5 py-0.5 rounded">Proforma</span>` : `<span class="text-xs bg-green-200 text-green-800 font-medium mr-2 px-2.5 py-0.5 rounded">Tax Invoice</span>`;
+                        
+                        const escapedBillNumber = (bill.billNumber || 'this bill').replace(/'/g, "\\'");
+                        div.innerHTML = `<div class="flex justify-between items-center"><div class="mb-2 sm:mb-0"><p class="font-semibold text-indigo-700">${typeLabel} ${bill.billNumber||'N/A'}</p><p class="text-sm">To: ${partyName} - Date: ${billDate}</p><p class="text-md font-bold">Total: ₹${(parseFloat(bill.grandTotal)||0).toFixed(2)}</p></div><div class="flex space-x-2"><button onclick="App.viewBill('${bill.id}', '${bill.invoice_type}')" class="text-green-500 p-1"><i class="fas fa-eye"></i></button><button onclick="App.editBill('${bill.id}', '${bill.invoice_type}')" class="text-blue-500 p-1"><i class="fas fa-edit"></i></button><button onclick="App.deleteBill('${bill.id}', '${escapedBillNumber}', '${bill.invoice_type}')" class="text-red-500 p-1"><i class="fas fa-trash"></i></button></div></div>`;
                         listEl.appendChild(div);
                     });
-                } catch (error) { document.getElementById('billsListContainer').innerHTML = '<p class="text-red-500 p-3 text-center">Error loading bills.</p>'; console.error("Error loading bills:", error); }
+                } catch (error) { document.getElementById('billsListContainer').innerHTML = '<p class="text-red-500 p-3 text-center">Error loading invoices.</p>'; console.error("Error loading bills:", error); }
                 finally { App.hideLoading(); }
             },
-            viewBill: async (id) => { App.showLoading(); try { const response = await apiRequest(`/bills/${id}`); currentPreviewBillData = response.data; App.generateBillPreview(id, currentPreviewBillData); App.navigateTo('viewBillView', `Bill: ${currentPreviewBillData.billNumber}`); } finally { App.hideLoading(); } },
-            editBill: async (id) => {
+            viewBill: async (id, invoiceType) => { 
+                App.showLoading(); 
+                try { 
+                    const response = await apiRequest(`/bills/${id}?type=${invoiceType}`); 
+                    currentPreviewBillData = response.data; 
+                    App.generateBillPreview(id, currentPreviewBillData); 
+                    App.navigateTo('viewBillView', `Invoice: ${currentPreviewBillData.billNumber}`); 
+                } finally { App.hideLoading(); } 
+            },
+            editBill: async (id, invoiceType) => {
                 App.showLoading();
                 try {
-                    const response = await apiRequest(`/bills/${id}`); const bill = response.data;
+                    const response = await apiRequest(`/bills/${id}?type=${invoiceType}`); const bill = response.data;
                     if (bill) {
                         document.getElementById('billId').value = bill.id;
+                        document.getElementById('invoiceType').value = bill.invoice_type || 'TAX_INVOICE';
                         document.getElementById('billNumber').value = bill.billNumber || '';
                         document.getElementById('billDate').value = bill.date ? bill.date.split('T')[0] : ''; 
                         document.getElementById('billReference').value = bill.reference || '';
@@ -686,27 +760,39 @@
                         
                         const itemsContainer = document.getElementById('billItemsContainer'); itemsContainer.innerHTML = ''; itemCounter = 0;
                         (bill.items || []).forEach(item => App.addBillItem(item)); 
-                        App.updateBillSummary(); App.navigateTo('createBillView', `Edit Bill: ${bill.billNumber || 'N/A'}`);
+                        App.updateBillSummary(); App.navigateTo('createBillView', `Edit Invoice: ${bill.billNumber || 'N/A'}`);
                     }
                 } finally { App.hideLoading(); }
             },
-            deleteBill: async (id, name) => App.showConfirmation("Delete Bill", `Delete Bill No. "${name}"?`, async () => { App.showLoading(); try { await apiRequest(`/bills/${id}`, 'DELETE'); App.showMessage("Bill deleted."); App.loadBills(); if (currentView === 'viewBillView' && currentPreviewBillData?.id === id) App.navigateTo('billsListView'); } finally { App.hideLoading(); } }),
-            
+            deleteBill: async (id, name, invoiceType) => {
+                const typeName = invoiceType === 'PROFORMA_INVOICE' ? 'Proforma' : 'Bill';
+                App.showConfirmation(`Delete ${typeName}`, `Delete ${typeName} No. "${name}"?`, async () => { 
+                    App.showLoading(); 
+                    try { 
+                        await apiRequest(`/bills/${id}?type=${invoiceType}`, 'DELETE'); 
+                        App.showMessage(`${typeName} deleted.`); 
+                        App.loadBills(); 
+                        if (currentView === 'viewBillView' && currentPreviewBillData?.id === id) App.navigateTo('billsListView'); 
+                    } finally { App.hideLoading(); } 
+                })
+            },
             generateBillPreview: (billId, billData) => {
                 const previewArea = document.getElementById('billPreviewArea');
                 previewArea.dataset.billId = billId;
                 currentPreviewBillData = { id: billId, ...billData }; 
-                const { sellerDetails={}, partyDetails={}, items=[], billNumber, date, reference, vehicleModelNo, subTotal=0, totalCGST=0, totalSGST=0, roundOff=0, grandTotal=0, amountInWords } = billData;
+                const { sellerDetails={}, partyDetails={}, items=[], billNumber, date, reference, vehicleModelNo, subTotal=0, totalCGST=0, totalSGST=0, roundOff=0, grandTotal=0, amountInWords, invoice_type } = billData;
 
                 let itemsHtml = '';
                 (items || []).forEach((item, index) => { 
-                    const fullDescription = `${item.description || ''}${item.partNo ? `<br><span class="part-no">(Part No: ${item.partNo})</span>` : ''}`;
+                    const fullDescription = `${item.description || ''}`;
+                    const qtyDisplay = item.itemType === 'labour' ? '' : (item.quantity !== undefined ? item.quantity : '');
                     itemsHtml += `
                         <tr>
                             <td class="text-center">${index + 1}</td>
                             <td>${fullDescription}</td>
-                            <td class="text-center">${item.hsnSac || ''}</td>
-                            <td class="text-center">${item.quantity !== undefined ? item.quantity : ''}</td>
+                             <td class="text-center">${item.partNo || '-'}</td>
+                            <td class="text-center">${item.hsnSac || '-'}</td>
+                            <td class="text-center">${qtyDisplay}</td>
                             <td class="text-right">${Number(item.unitPrice || 0).toFixed(2)}</td>
                             <td class="text-center">${item.gstRate !== undefined ? Number(item.gstRate).toFixed(0) + '%' : ''}</td>
                             <td class="text-right">${Number(item.taxableValue || 0).toFixed(2)}</td>
@@ -718,11 +804,12 @@
                     partyAddressHtml = `Address: ${partyDetails.address.replace(/\n/g, '<br>')}<br>`;
                 }
 
+                const title = (invoice_type === 'PROFORMA_INVOICE') ? 'PROFORMA INVOICE' : 'TAX INVOICE';
                 previewArea.innerHTML = `
                     <div class="header-company-name">${sellerDetails.name || ''}</div>
                     <div class="header-address">${sellerDetails.address || ''}</div>
                     <div class="header-gstin">GSTIN/UIN: ${sellerDetails.gstin || ''}</div>
-                    <div class="tax-invoice-title">TAX INVOICE</div>
+                    <div class="tax-invoice-title">${title}</div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 8px;">
                         <div class="party-details-preview" style="width: 60%;">
                             <strong>Bill To:</strong><br>
@@ -762,10 +849,10 @@
             },
             downloadBillAsPdf: async () => { 
                 App.showLoading();
-                if (!currentPreviewBillData || !currentPreviewBillData.id) { App.showMessage("No bill selected.", true); App.hideLoading(); return; }
-                const billId = currentPreviewBillData.id;
+                if (!currentPreviewBillData || !currentPreviewBillData.id) { App.showMessage("No invoice selected.", true); App.hideLoading(); return; }
+                const { id, invoice_type, billNumber } = currentPreviewBillData;
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/bills/${billId}/download-pdf`);
+                    const response = await fetch(`${API_BASE_URL}/api/bills/${id}/download-pdf?type=${invoice_type}`);
                     if (!response.ok) {
                         const errorText = await response.text(); 
                         throw new Error(`Server error: ${response.status} - ${errorText || response.statusText}`);
@@ -774,7 +861,8 @@
                     if (pdfBlob.type !== 'application/pdf') throw new Error("Server did not return a PDF file. Check server logs.");
                     const link = document.createElement('a');
                     link.href = URL.createObjectURL(pdfBlob);
-                    link.download = `Invoice-${String(currentPreviewBillData.billNumber || billId).replace(/[^a-z0-9_.-]/gi, '_')}.pdf`;
+                    const sanitizedName = String(billNumber || id).replace(/[^a-z0-9_.-]/gi, '_');
+                    link.download = `${invoice_type}-${sanitizedName}.pdf`;
                     document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(link.href);
                 } catch (err) { 
                     console.error("PDF download error:", err); 
@@ -783,22 +871,22 @@
                 finally { App.hideLoading(); }
             },
             sendBillByEmail: async () => {
-                if (!currentPreviewBillData || !currentPreviewBillData.id) { App.showMessage("View a bill first.", true); return; }
-                const { id, partyDetails, billNumber } = currentPreviewBillData;
+                if (!currentPreviewBillData || !currentPreviewBillData.id) { App.showMessage("View an invoice first.", true); return; }
+                const { id, partyDetails, billNumber, invoice_type } = currentPreviewBillData;
                 const toEmail = partyDetails?.email;
                 if (!toEmail) { App.showMessage("Party email missing.", true); return; }
                 const ccEmail = sellerSettings?.email || '';
+                const typeName = invoice_type === 'PROFORMA_INVOICE' ? 'Proforma Invoice' : 'Invoice';
 
-                App.showConfirmation("Confirm Email", `Send bill ${billNumber} to ${toEmail}${ccEmail ? ` (CC: ${ccEmail})` : ''}?`, async () => {
+                App.showConfirmation("Confirm Email", `Send ${typeName} ${billNumber} to ${toEmail}${ccEmail ? ` (CC: ${ccEmail})` : ''}?`, async () => {
                     App.showLoading();
                     try {
-                        await apiRequest(`/bills/${id}/send-email`, 'POST', { to: toEmail, cc: ccEmail, subject: `Invoice ${billNumber} from ${sellerSettings?.name || 'Us'}` });
+                        await apiRequest(`/bills/${id}/send-email`, 'POST', { to: toEmail, cc: ccEmail, subject: `${typeName} ${billNumber} from ${sellerSettings?.name || 'Us'}`, type: invoice_type });
                         App.showMessage("Email sent successfully.");
                     } finally { App.hideLoading(); }
                 });
             },
             numberToWords: (num) => {
-                // Simplified number to words for brevity
                 return new ToWords().toWords(num);
             },
             navigateToDataMgmtMenu: () => { document.getElementById('dataMgmtModal').style.display = 'block'; },
