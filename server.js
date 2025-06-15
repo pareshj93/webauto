@@ -1,4 +1,4 @@
-// --- server.js (Attractive Header Design) ---
+// --- server.js (Final Stable Version) ---
 require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
@@ -6,6 +6,7 @@ const cors = require('cors');
 const nodemailer = require('nodemailer');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const axios = require('axios');
 const { ToWords } = require('to-words');
@@ -41,16 +42,12 @@ async function initializeDatabasePool() {
 }
 
 // --- Middleware & Utilities ---
-app.use(cors({
-    origin: '*',
-    methods: 'GET,POST,PUT,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type,Authorization'
-}));
+app.use(cors());
 app.use(express.json());
 const sendResponse = (res, statusCode, data, message, meta) => res.status(statusCode).json({ success: statusCode < 400, data, message, meta });
 app.use((req, res, next) => { if (!pool) return sendResponse(res, 503, null, "Database service unavailable."); next(); });
 
-// --- API Endpoints (CRUD operations for Settings, Parties, Products, Bills) ---
+// --- API Endpoints (CRUD operations) ---
 app.get('/api/settings', async (req, res) => { try { const [rows] = await pool.query('SELECT * FROM seller_settings WHERE id = ? LIMIT 1', [1]); sendResponse(res, 200, rows[0] || {}); } catch (e) { console.error(e); sendResponse(res, 500, null, 'Failed to fetch settings.'); } });
 app.post('/api/settings', async (req, res) => {
     console.log('--- API HIT: Saving Settings ---');
@@ -282,84 +279,90 @@ const PDF_SETTINGS = {
     LOGO: { MAX_WIDTH: 180, MAX_HEIGHT: 100 } 
 };
 
-async function generateBillPdfBuffer(billDetails, logoBuffer) {
-    return new Promise((resolve, reject) => {
+// --- SIMPLIFIED AND ROBUST PDF CONTENT DRAWING ---
+async function drawPdfContent(doc, billDetails, logoUrl) {
+    try {
+        const context = { y: doc.page.margins.top };
+
+        doc.on('pageAdded', () => { 
+            context.y = doc.page.margins.top;
+            doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM)
+                .text(`Invoice Continued: ${billDetails.billNumber}`, doc.page.margins.left, doc.page.margins.top - 20, { 
+                    width: doc.page.width - doc.page.margins.left - doc.page.margins.right, 
+                    align: 'center' 
+                });
+        });
+        
+        await drawHeader(doc, context, billDetails, logoUrl, true);
+        drawBillPartyAndMetaInfo(doc, context, billDetails);
+        
+        const title = (billDetails.invoice_type === 'PROFORMA_INVOICE') ? 'PROFORMA INVOICE' : 'TAX INVOICE';
+        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(14).fillColor(PDF_SETTINGS.COLOR.INVOICE_TITLE)
+           .text(title, PDF_SETTINGS.MARGIN.LEFT, context.y, { 
+               width: doc.page.width - PDF_SETTINGS.MARGIN.LEFT - PDF_SETTINGS.MARGIN.RIGHT, 
+               align: 'center' 
+           });
+        context.y = doc.y + 15;
+        
+        const layoutOptions = { fontSize: 9, rowPadding: 5 };
+        const itemTableConfig = getItemTableConfig(doc, billDetails, layoutOptions);
+        drawItemTable(doc, context, itemTableConfig, layoutOptions);
+
+        const hsnConfig = getHsnSummaryConfig(doc, billDetails, itemTableConfig.tableWidth, layoutOptions);
+        const totalsHeight = 140; 
+        const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig, layoutOptions) : 0;
+        
+        if (checkAndHandlePageBreak(doc, context, totalsHeight + hsnHeight)) {
+            drawTotalsSection(doc, context, billDetails, layoutOptions);
+            if(hsnConfig) {
+                checkAndHandlePageBreak(doc, context, hsnHeight);
+                drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+            }
+        } else {
+             drawTotalsSection(doc, context, billDetails, layoutOptions);
+             if(hsnConfig) {
+                 drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+             }
+        }
+        
+        finalizePages(doc, billDetails);
+
+    } catch (e) {
+        console.error("!!! FATAL ERROR during PDF generation:", e.stack);
+        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(18).fillColor('red')
+           .text('Error Generating PDF', { align: 'center' });
+        doc.moveDown();
+        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(10).fillColor('black')
+           .text('An unexpected error occurred on the server.', { align: 'center'});
+    }
+}
+
+function generateBillPdfBuffer(billDetails, logoUrl) {
+    return new Promise(async (resolve, reject) => {
         const doc = new PDFDocument({ size: 'A4', margins: PDF_SETTINGS.MARGIN, bufferPages: true });
         const buffers = [];
         doc.on('data', chunk => buffers.push(chunk));
         doc.on('end', () => resolve(Buffer.concat(buffers)));
         doc.on('error', reject);
 
-        try {
-            const context = { y: doc.page.margins.top };
-            const itemCount = (billDetails.items || []).length;
-
-            doc.on('pageAdded', () => { 
-                context.y = doc.page.margins.top;
-                doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM)
-                    .text(`Invoice Continued: ${billDetails.billNumber}`, doc.page.margins.left, doc.page.margins.top - 20, { 
-                        width: doc.page.width - doc.page.margins.left - doc.page.margins.right, 
-                        align: 'center' 
-                    });
-            });
-            
-            drawHeader(doc, context, billDetails, logoBuffer, true);
-            drawBillPartyAndMetaInfo(doc, context, billDetails);
-            
-            const title = (billDetails.invoice_type === 'PROFORMA_INVOICE') ? 'PROFORMA INVOICE' : 'TAX INVOICE';
-            doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(14).fillColor(PDF_SETTINGS.COLOR.INVOICE_TITLE)
-               .text(title, PDF_SETTINGS.MARGIN.LEFT, context.y, { 
-                   width: doc.page.width - PDF_SETTINGS.MARGIN.LEFT - PDF_SETTINGS.MARGIN.RIGHT, 
-                   align: 'center' 
-               });
-            context.y = doc.y + 15;
-            
-            let layoutOptions = { fontSize: 9, rowPadding: 5 };
-            if (itemCount <= 10) {
-                 layoutOptions = { fontSize: 7.8, rowPadding: 3 };
-            }
-
-            const itemTableConfig = getItemTableConfig(doc, billDetails, layoutOptions);
-            drawItemTable(doc, context, itemTableConfig, layoutOptions);
-
-            const hsnConfig = getHsnSummaryConfig(doc, billDetails, itemTableConfig.tableWidth, layoutOptions);
-            
-            if (itemCount <= 10) {
-                drawTotalsSection(doc, context, billDetails, layoutOptions);
-                if (hsnConfig) {
-                    drawHsnSummary(doc, context, hsnConfig, layoutOptions);
-                }
-            } else if (itemCount <= 14) {
-                drawTotalsSection(doc, context, billDetails, layoutOptions);
-                if (hsnConfig) {
-                    doc.addPage();
-                    drawHsnSummary(doc, context, hsnConfig, layoutOptions);
-                }
-            } else {
-                const totalsHeight = 140; 
-                const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig, layoutOptions) : 0;
-                
-                if (checkAndHandlePageBreak(doc, context, totalsHeight + hsnHeight)) {
-                    drawTotalsSection(doc, context, billDetails, layoutOptions);
-                     if (hsnConfig) {
-                        checkAndHandlePageBreak(doc, context, hsnHeight);
-                        drawHsnSummary(doc, context, hsnConfig, layoutOptions);
-                     }
-                } else {
-                    drawTotalsSection(doc, context, billDetails, layoutOptions);
-                    if (hsnConfig) {
-                        drawHsnSummary(doc, context, hsnConfig, layoutOptions);
-                    }
-                }
-            }
-            
-            finalizePages(doc, billDetails);
-            doc.end();
-        } catch (e) { console.error("[PDF Generation Error]", e.stack); reject(e); }
+        await drawPdfContent(doc, billDetails, logoUrl);
+        
+        doc.end();
     });
 }
 
-function drawHeader(doc, context, billDetails, logoBuffer, isFirstPage) {
+function streamBillPdf(res, billDetails, logoUrl) {
+    const doc = new PDFDocument({ size: 'A4', margins: PDF_SETTINGS.MARGIN });
+    
+    doc.pipe(res);
+    
+    drawPdfContent(doc, billDetails, logoUrl);
+
+    doc.end();
+}
+
+
+async function drawHeader(doc, context, billDetails, logoUrl, isFirstPage) {
     const { sellerDetails } = billDetails;
     const { MARGIN, FONT, COLOR, LOGO } = PDF_SETTINGS;
 
@@ -369,9 +372,11 @@ function drawHeader(doc, context, billDetails, logoBuffer, isFirstPage) {
         let logoHeight = 0;
         let finalRightY = headerStartY;
 
-        if (logoBuffer) {
+        let tempLogoPath = null;
+        if (logoUrl) {
             try {
-                const logoDims = doc.image(logoBuffer, MARGIN.LEFT, headerStartY, {
+                tempLogoPath = await downloadImageToTempFile(logoUrl);
+                const logoDims = doc.image(tempLogoPath, MARGIN.LEFT, headerStartY, {
                     fit: [LOGO.MAX_WIDTH, 80],
                     align: 'left',
                     valign: 'top'
@@ -399,6 +404,12 @@ function drawHeader(doc, context, billDetails, logoBuffer, isFirstPage) {
                 doc.text(`GSTIN/UIN: ${sellerDetails.gstin}`, { width: textBlockMaxWidth });
             }
             finalRightY = doc.y;
+        }
+        
+        if (tempLogoPath) {
+            fs.unlink(tempLogoPath, (err) => {
+                if(err) console.error("Error deleting temp logo file:", err.message);
+            });
         }
 
         context.y = Math.max(headerStartY + logoHeight, finalRightY) + 30;
@@ -475,14 +486,12 @@ function drawBillPartyAndMetaInfo(doc, context, billDetails) {
 }
 
 
-// <<< FIX: ALWAYS USE CURRENT SETTINGS FOR PDF GENERATION >>>
 app.get('/api/bills/:id/download-pdf', async (req, res) => {
     try {
         const { type } = req.query;
         const billId = req.params.id;
         if (!type) return sendResponse(res, 400, null, 'Invoice type query parameter is required.');
 
-        console.log(`--- API HIT: PDF Download for ${type} ID: ${billId} ---`);
         const isProforma = type === 'PROFORMA_INVOICE';
         const tableName = isProforma ? 'proforma_invoices' : 'bills';
         const itemsTableName = isProforma ? 'proforma_invoice_items' : 'bill_items';
@@ -492,32 +501,28 @@ app.get('/api/bills/:id/download-pdf', async (req, res) => {
         
         let billData = billRows[0];
         
-        // --- FETCH LATEST SETTINGS ---
         const [settingsRows] = await pool.query('SELECT * FROM seller_settings WHERE id = 1 LIMIT 1');
         const latestSettings = settingsRows[0] || {};
         
-        // --- OVERWRITE SAVED DETAILS WITH LATEST SETTINGS ---
         billData.sellerDetails = latestSettings;
         billData.partyDetails = JSON.parse(billData.partyDetails || '{}');
         const [itemRows] = await pool.query(`SELECT * FROM ${itemsTableName} WHERE bill_id = ?`, [billId]);
         billData.items = itemRows || [];
         
         const logoUrl = billData.sellerDetails.companyLogoUrl || "https://jetsetbranding.com/Webauto.jpg";
-        const logoBuffer = await getLogoBuffer(logoUrl);
-
-        const pdfBuffer = await generateBillPdfBuffer(billData, logoBuffer);
-
+        
         res.setHeader('Content-Type', 'application/pdf');
         const sanitizedBillNumber = String(billData.billNumber || billId).replace(/[^a-z0-9_.-]/gi, '_');
         res.setHeader('Content-Disposition', `attachment; filename="${type}-${sanitizedBillNumber}.pdf"`);
-        res.send(pdfBuffer);
+        
+        await streamBillPdf(res, billData, logoUrl);
+
     } catch (error) {
         console.error(`--- ERROR generating PDF for download for bill ${req.params.id} ---:`, error.stack);
         res.status(500).type('text/plain').send(`Failed to generate PDF. Error: ${error.message}`);
     }
 });
 
-// <<< FIX: ALWAYS USE CURRENT SETTINGS FOR EMAIL >>>
 app.post('/api/bills/:id/send-email', async (req, res) => {
     try {
         const { to, cc, subject, type } = req.body;
@@ -536,19 +541,16 @@ app.post('/api/bills/:id/send-email', async (req, res) => {
 
         let billData = billRows[0];
 
-        // --- FETCH LATEST SETTINGS ---
         const [settingsRows] = await pool.query('SELECT * FROM seller_settings WHERE id = 1 LIMIT 1');
         const latestSettings = settingsRows[0] || {};
 
-        // --- OVERWRITE SAVED DETAILS WITH LATEST SETTINGS ---
         billData.sellerDetails = latestSettings;
         billData.partyDetails = JSON.parse(billData.partyDetails || '{}');
         const [itemRows] = await pool.query(`SELECT * FROM ${itemsTableName} WHERE bill_id = ?`, [req.params.id]);
         billData.items = itemRows || [];
 
         const logoUrl = billData.sellerDetails.companyLogoUrl || "https://jetsetbranding.com/Webauto.jpg";
-        const logoBuffer = await getLogoBuffer(logoUrl);
-        const pdfBuffer = await generateBillPdfBuffer(billData, logoBuffer);
+        const pdfBuffer = await generateBillPdfBuffer(billData, logoUrl);
 
         const transporter = nodemailer.createTransport({
             host: process.env.SMTP_HOST,
@@ -933,23 +935,34 @@ function drawHsnSummary(doc, context, config, options) {
 
     context.y += footerHeight;
 }
-async function getLogoBuffer(url) {
-    if (!url) return null;
+
+// --- NEW HELPER FUNCTION TO STREAM IMAGE TO TEMP FILE ---
+async function downloadImageToTempFile(url) {
+    if (!url || !url.startsWith('http')) return null;
+    
+    const tempFileName = `logo-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.jpg`;
+    const localPath = path.join(os.tmpdir(), tempFileName);
+
     try {
-        if (url.startsWith('http')) {
-            const response = await axios.get(url, { responseType: 'arraybuffer' });
-            return response.data;
-        } else {
-            const localPath = path.isAbsolute(url) ? url : path.join(__dirname, 'public', url);
-            if (fs.existsSync(localPath)) {
-                return fs.readFileSync(localPath);
-            }
-        }
-    } catch (error) {
-        console.error(`Failed to get logo from ${url}:`, error.message);
+        const writer = fs.createWriteStream(localPath);
+        const response = await axios({
+            url,
+            method: 'GET',
+            responseType: 'stream'
+        });
+
+        response.data.pipe(writer);
+
+        return new Promise((resolve, reject) => {
+            writer.on('finish', () => resolve(localPath));
+            writer.on('error', reject);
+        });
+    } catch(err) {
+        console.error("Failed to download image:", err.message);
+        return null;
     }
-    return null;
 }
+
 
 // --- Server Startup ---
 async function startServer() {
