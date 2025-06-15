@@ -278,74 +278,72 @@ const PDF_SETTINGS = {
     LOGO: { MAX_WIDTH: 180, MAX_HEIGHT: 100 } 
 };
 
-// *** NEW: SHARED FUNCTION TO DRAW PDF CONTENT ***
+// --- SIMPLIFIED AND ROBUST PDF CONTENT DRAWING ---
 function drawPdfContent(doc, billDetails, logoBuffer) {
-    const context = { y: doc.page.margins.top };
-    const itemCount = (billDetails.items || []).length;
+    try {
+        const context = { y: doc.page.margins.top };
+        const itemCount = (billDetails.items || []).length;
 
-    doc.on('pageAdded', () => { 
-        context.y = doc.page.margins.top;
-        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM)
-            .text(`Invoice Continued: ${billDetails.billNumber}`, doc.page.margins.left, doc.page.margins.top - 20, { 
-                width: doc.page.width - doc.page.margins.left - doc.page.margins.right, 
-                align: 'center' 
-            });
-    });
-    
-    drawHeader(doc, context, billDetails, logoBuffer, true);
-    drawBillPartyAndMetaInfo(doc, context, billDetails);
-    
-    const title = (billDetails.invoice_type === 'PROFORMA_INVOICE') ? 'PROFORMA INVOICE' : 'TAX INVOICE';
-    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(14).fillColor(PDF_SETTINGS.COLOR.INVOICE_TITLE)
-       .text(title, PDF_SETTINGS.MARGIN.LEFT, context.y, { 
-           width: doc.page.width - PDF_SETTINGS.MARGIN.LEFT - PDF_SETTINGS.MARGIN.RIGHT, 
-           align: 'center' 
-       });
-    context.y = doc.y + 15;
-    
-    let layoutOptions = { fontSize: 9, rowPadding: 5 };
-    if (itemCount <= 10) {
-         layoutOptions = { fontSize: 7.8, rowPadding: 3 };
-    }
+        doc.on('pageAdded', () => { 
+            context.y = doc.page.margins.top;
+            doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM)
+                .text(`Invoice Continued: ${billDetails.billNumber}`, doc.page.margins.left, doc.page.margins.top - 20, { 
+                    width: doc.page.width - doc.page.margins.left - doc.page.margins.right, 
+                    align: 'center' 
+                });
+        });
+        
+        drawHeader(doc, context, billDetails, logoBuffer, true);
+        drawBillPartyAndMetaInfo(doc, context, billDetails);
+        
+        const title = (billDetails.invoice_type === 'PROFORMA_INVOICE') ? 'PROFORMA INVOICE' : 'TAX INVOICE';
+        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(14).fillColor(PDF_SETTINGS.COLOR.INVOICE_TITLE)
+           .text(title, PDF_SETTINGS.MARGIN.LEFT, context.y, { 
+               width: doc.page.width - PDF_SETTINGS.MARGIN.LEFT - PDF_SETTINGS.MARGIN.RIGHT, 
+               align: 'center' 
+           });
+        context.y = doc.y + 15;
+        
+        const layoutOptions = { fontSize: 9, rowPadding: 5 };
+        const itemTableConfig = getItemTableConfig(doc, billDetails, layoutOptions);
+        drawItemTable(doc, context, itemTableConfig, layoutOptions);
 
-    const itemTableConfig = getItemTableConfig(doc, billDetails, layoutOptions);
-    drawItemTable(doc, context, itemTableConfig, layoutOptions);
-
-    const hsnConfig = getHsnSummaryConfig(doc, billDetails, itemTableConfig.tableWidth, layoutOptions);
-    
-    if (itemCount <= 10) {
-        drawTotalsSection(doc, context, billDetails, layoutOptions);
-        if (hsnConfig) {
-            drawHsnSummary(doc, context, hsnConfig, layoutOptions);
-        }
-    } else if (itemCount <= 14) {
-        drawTotalsSection(doc, context, billDetails, layoutOptions);
-        if (hsnConfig) {
-            doc.addPage();
-            drawHsnSummary(doc, context, hsnConfig, layoutOptions);
-        }
-    } else {
-        const totalsHeight = 140; 
+        const hsnConfig = getHsnSummaryConfig(doc, billDetails, itemTableConfig.tableWidth, layoutOptions);
+        const totalsHeight = 140;
         const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig, layoutOptions) : 0;
         
+        // --- FINAL PAGE BREAK LOGIC ---
         if (checkAndHandlePageBreak(doc, context, totalsHeight + hsnHeight)) {
+            // Not enough space for everything, so it moved to a new page
             drawTotalsSection(doc, context, billDetails, layoutOptions);
-             if (hsnConfig) {
+            if(hsnConfig) {
+                 // Check again in case HSN summary alone needs another page
                 checkAndHandlePageBreak(doc, context, hsnHeight);
                 drawHsnSummary(doc, context, hsnConfig, layoutOptions);
-             }
-        } else {
-            drawTotalsSection(doc, context, billDetails, layoutOptions);
-            if (hsnConfig) {
-                drawHsnSummary(doc, context, hsnConfig, layoutOptions);
             }
+        } else {
+             // Everything fits, draw both on the current page
+             drawTotalsSection(doc, context, billDetails, layoutOptions);
+             if(hsnConfig) {
+                 drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+             }
         }
+        
+        finalizePages(doc, billDetails);
+
+    } catch (e) {
+        console.error("!!! FATAL ERROR during PDF generation:", e.stack);
+        // Write an error message directly into the PDF
+        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(18).fillColor('red')
+           .text('Error Generating PDF', { align: 'center' });
+        doc.moveDown();
+        doc.font(PDF_SETTINGS.FONT.NORMAL).fontSize(10).fillColor('black')
+           .text('An unexpected error occurred. Please contact support.', { align: 'center'});
+        doc.moveDown();
+        doc.text(e.message, { align: 'center'});
     }
-    
-    finalizePages(doc, billDetails);
 }
 
-// *** NEW: FUNCTION TO GENERATE PDF AND RETURN A BUFFER (FOR EMAILS) ***
 function generateBillPdfBuffer(billDetails, logoBuffer) {
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({ size: 'A4', margins: PDF_SETTINGS.MARGIN, bufferPages: true });
@@ -360,17 +358,13 @@ function generateBillPdfBuffer(billDetails, logoBuffer) {
     });
 }
 
-// *** NEW: FUNCTION TO GENERATE PDF AND STREAM TO RESPONSE (FOR DOWNLOADS) ***
 function streamBillPdf(res, billDetails, logoBuffer) {
     const doc = new PDFDocument({ size: 'A4', margins: PDF_SETTINGS.MARGIN });
     
-    // Pipe the PDF directly to the response object
     doc.pipe(res);
     
-    // Draw the content
     drawPdfContent(doc, billDetails, logoBuffer);
 
-    // Finalize the PDF and end the stream
     doc.end();
 }
 
@@ -491,7 +485,6 @@ function drawBillPartyAndMetaInfo(doc, context, billDetails) {
 }
 
 
-// <<< UPDATED DOWNLOAD ENDPOINT TO STREAM PDF >>>
 app.get('/api/bills/:id/download-pdf', async (req, res) => {
     try {
         const { type } = req.query;
@@ -522,7 +515,6 @@ app.get('/api/bills/:id/download-pdf', async (req, res) => {
         const sanitizedBillNumber = String(billData.billNumber || billId).replace(/[^a-z0-9_.-]/gi, '_');
         res.setHeader('Content-Disposition', `attachment; filename="${type}-${sanitizedBillNumber}.pdf"`);
         
-        // Stream the PDF directly to the response
         streamBillPdf(res, billData, logoBuffer);
 
     } catch (error) {
@@ -531,7 +523,6 @@ app.get('/api/bills/:id/download-pdf', async (req, res) => {
     }
 });
 
-// <<< EMAIL ENDPOINT STILL USES BUFFERING (REQUIRED) >>>
 app.post('/api/bills/:id/send-email', async (req, res) => {
     try {
         const { to, cc, subject, type } = req.body;
