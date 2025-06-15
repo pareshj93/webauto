@@ -45,10 +45,67 @@
         .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 500px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .close-button { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
         .close-button:hover, .close-button:focus { color: black; text-decoration: none; }
-        #loadingSpinner { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; }
-        .spinner { border: 4px solid rgba(0, 0, 0, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #4f46e5; animation: spin 1s ease infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .pagination-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* --- New Skeleton Loader Styles --- */
+        #skeletonLoader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.9);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            backdrop-filter: blur(4px);
+        }
+        .skeleton-preview {
+            width: 80%;
+            max-width: 400px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .skeleton-line {
+            height: 12px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            background-color: #e0e0e0;
+        }
+        .skeleton-line.short { width: 60%; }
+        .skeleton-line.long { width: 90%; }
+        .skeleton-title { height: 20px; width: 50%; margin: 10px auto; }
+        .skeleton-table-header { height: 16px; width: 100%; margin-bottom: 10px; }
+        .shimmer {
+            position: relative;
+            overflow: hidden;
+        }
+        .shimmer::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            100% {
+                left: 100%;
+            }
+        }
+        .loading-text {
+            margin-top: 20px;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #4A5568;
+        }
 
         @media print {
             body, html { margin: 0; padding: 0; background-color: #fff; }
@@ -99,7 +156,26 @@
             <button id="logoutButton" class="text-white hover:text-gray-200"><i class="fas fa-sign-out-alt mr-1"></i> Logout</button>
         </header>
 
-        <div id="loadingSpinner" class="hidden no-print"><div class="spinner"></div></div>
+        <!-- New Skeleton Loader -->
+        <div id="skeletonLoader" class="hidden no-print">
+            <div class="skeleton-preview">
+                <div class="shimmer skeleton-line" style="width: 70%; height: 24px; margin-bottom: 20px;"></div>
+                <div class="shimmer skeleton-line" style="width: 50%;"></div>
+                <div class="shimmer skeleton-line" style="width: 80%; margin-bottom: 20px;"></div>
+                
+                <div class="shimmer skeleton-title"></div>
+                
+                <div class="shimmer skeleton-table-header"></div>
+                <div class="shimmer skeleton-line"></div>
+                <div class="shimmer skeleton-line"></div>
+                <div class="shimmer skeleton-line short"></div>
+                <div class="shimmer skeleton-line"></div>
+                <div class="shimmer skeleton-line long"></div>
+                <div class="shimmer skeleton-line"></div>
+            </div>
+            <p class="loading-text">Generating Your Document...</p>
+        </div>
+        
         <div id="messageModal" class="modal no-print"><div class="modal-content"><span class="close-button" onclick="App.closeModal()">&times;</span><p id="modalMessageText" class="text-gray-700 my-4"></p><button onclick="App.closeModal()" class="mt-4 bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded w-full">OK</button></div></div>
         <div id="confirmationModal" class="modal no-print"><div class="modal-content"><h3 class="text-lg font-semibold mb-3" id="confirmationModalTitle"></h3><p id="confirmationModalMessage" class="text-gray-700 mb-4"></p><div class="flex justify-end space-x-3"><button id="confirmCancelButton" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-md">Cancel</button><button id="confirmActionButton" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-md">Confirm</button></div></div></div>
 
@@ -262,7 +338,7 @@
     <div id="addProductFromSavedModal" class="modal no-print"><div class="modal-content"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Select Product</h3><span class="close-button" onclick="App.closeAddProductFromSavedModal()">&times;</span></div><div class="mb-3"><input type="search" id="modalProductSearchInput" placeholder="Search saved products..." class="w-full p-2 border"></div><div id="savedProductsSelectionList" class="max-h-60 overflow-y-auto border p-2"></div><div id="modalProductPaginationControls" class="mt-3 flex justify-between items-center"></div><button onclick="App.closeAddProductFromSavedModal()" class="mt-4 bg-gray-500 text-white font-bold py-2 px-4 rounded-md w-full shadow">Close</button></div></div>
 
     <script type="module">
-        const API_BASE_URL = 'https://webautofinal.onrender.com';
+        const API_BASE_URL = 'https://webautofinal-production.up.railway.app';
 
         let currentView = 'dashboardView';
         let sellerSettings = null;
@@ -351,7 +427,7 @@
                 document.getElementById('loginForm').reset();
             },
             loadInitialData: async () => {
-                App.showLoading();
+                App.showLoading("Initializing...");
                 try {
                     await Promise.all([ App.loadSettings(), App.loadParties(true), App.loadProducts(1, '', true), App.loadBills() ]);
                     App.prepareNewBillForm();
@@ -372,8 +448,14 @@
                 if (viewId === 'billsListView') App.loadBills();
                 window.scrollTo(0, 0);
             },
-            showLoading: () => document.getElementById('loadingSpinner').classList.remove('hidden'),
-            hideLoading: () => document.getElementById('loadingSpinner').classList.add('hidden'),
+            // Updated showLoading to use the skeleton loader
+            showLoading: (text = "Generating Your Document...") => {
+                document.querySelector('#skeletonLoader .loading-text').textContent = text;
+                document.getElementById('skeletonLoader').style.display = 'flex';
+            },
+            hideLoading: () => {
+                document.getElementById('skeletonLoader').style.display = 'none';
+            },
             showMessage: (message, isError = false) => {
                 const modal = document.getElementById('messageModal');
                 document.getElementById('modalMessageText').textContent = message;
@@ -412,7 +494,7 @@
                 } catch (error) { console.error("Error loading settings:", error); }
             },
             saveSettings: async (e) => {
-                e.preventDefault(); App.showLoading();
+                e.preventDefault(); App.showLoading("Saving settings...");
                 const settingsData = {
                     name: document.getElementById('sellerName').value.trim(), address: document.getElementById('sellerAddress').value.trim(),
                     gstin: document.getElementById('sellerGstin').value.trim().toUpperCase(), email: document.getElementById('sellerEmail').value.trim(),
@@ -440,7 +522,7 @@
             },
             hidePartyForm: () => { document.getElementById('partyForm').classList.add('hidden'); document.getElementById('partyForm').reset(); document.getElementById('partyId').value = ''; },
             saveParty: async (e) => {
-                e.preventDefault(); App.showLoading();
+                e.preventDefault(); App.showLoading("Saving party...");
                 const partyId = document.getElementById('partyId').value;
                 const partyData = { name: document.getElementById('partyName').value.trim(), email: document.getElementById('partyEmail').value.trim(), address: document.getElementById('partyAddress').value.trim(), gstin: document.getElementById('partyGstin').value.trim().toUpperCase() };
                 if (!partyData.name) { App.showMessage("Party name is required.", true); App.hideLoading(); return; }
@@ -470,7 +552,7 @@
                     const option = document.createElement('option'); option.value = party.id; option.textContent = `${party.name} (${party.gstin || 'No GSTIN'})`; option.dataset.partyData = partyJson; selectEl.appendChild(option);
                 });
             },
-            deleteParty: async (id, name) => App.showConfirmation("Delete Party", `Delete "${name}"?`, async () => { App.showLoading(); try { await apiRequest(`/parties/${id}`, 'DELETE'); App.showMessage("Party deleted."); App.loadParties(true); } finally { App.hideLoading(); } }),
+            deleteParty: async (id, name) => App.showConfirmation("Delete Party", `Delete "${name}"?`, async () => { App.showLoading("Deleting..."); try { await apiRequest(`/parties/${id}`, 'DELETE'); App.showMessage("Party deleted."); App.loadParties(true); } finally { App.hideLoading(); } }),
             populatePartyDetailsForBill: (e) => {
                 const opt = e.target.options[e.target.selectedIndex];
                 if (opt.value && opt.dataset.partyData) {
@@ -492,7 +574,7 @@
             },
             hideProductForm: () => { document.getElementById('productForm').classList.add('hidden'); document.getElementById('productForm').reset(); document.getElementById('productId').value = ''; },
             saveProduct: async (e) => {
-                e.preventDefault(); App.showLoading();
+                e.preventDefault(); App.showLoading("Saving product...");
                 const productId = document.getElementById('productId').value;
                 const productData = {
                     description: document.getElementById('productDescription').value.trim(),
@@ -508,7 +590,7 @@
                 } finally { App.hideLoading(); }
             },
             loadProducts: async (page = 1, searchTerm = '', loadAllForModal = false) => {
-                App.showLoading();
+                App.showLoading("Loading products...");
                 const endpoint = loadAllForModal ? `/products?limit=10000` : `/products?page=${page}&limit=${PRODUCTS_PER_PAGE}&search=${encodeURIComponent(searchTerm)}`; 
                 try {
                     const response = await apiRequest(endpoint);
@@ -543,7 +625,7 @@
                 if (!pagination || pagination.totalPages <= 1) return;
                 controlsEl.innerHTML = `<button onclick="App.loadProducts(${pagination.currentPage - 1}, document.getElementById('productSearchInput').value)" class="bg-indigo-500 text-white py-2 px-4 rounded-md" ${pagination.currentPage <= 1 ? 'disabled' : ''}>Prev</button><span>Page ${pagination.currentPage} of ${pagination.totalPages}</span><button onclick="App.loadProducts(${pagination.currentPage + 1}, document.getElementById('productSearchInput').value)" class="bg-indigo-500 text-white py-2 px-4 rounded-md" ${pagination.currentPage >= pagination.totalPages ? 'disabled' : ''}>Next</button>`;
             },
-            deleteProduct: async (id, name) => App.showConfirmation("Delete Product", `Delete "${name}"?`, async () => { App.showLoading(); try { await apiRequest(`/products/${id}`, 'DELETE'); App.showMessage("Product deleted."); App.loadProducts(currentProductPage, '', true); } finally { App.hideLoading(); } }), 
+            deleteProduct: async (id, name) => App.showConfirmation("Delete Product", `Delete "${name}"?`, async () => { App.showLoading("Deleting..."); try { await apiRequest(`/products/${id}`, 'DELETE'); App.showMessage("Product deleted."); App.loadProducts(currentProductPage, '', true); } finally { App.hideLoading(); } }), 
             
             showAddProductFromSavedModal: () => { document.getElementById('modalProductSearchInput').value = ''; App.loadProductsForModal(1); document.getElementById('addProductFromSavedModal').style.display = 'block'; },
             closeAddProductFromSavedModal: () => { document.getElementById('addProductFromSavedModal').style.display = 'none'; },
@@ -650,7 +732,7 @@
                 document.getElementById('billGrandTotal').textContent = `₹${roundedGrandTotal.toFixed(2)}`;
             },
             saveBill: async (e) => {
-                e.preventDefault(); if (!sellerSettings) { App.showMessage("Seller settings missing.", true); return; } App.showLoading();
+                e.preventDefault(); if (!sellerSettings) { App.showMessage("Seller settings missing.", true); return; } App.showLoading("Saving invoice...");
                 
                 const items = []; let calcSub = 0, calcCgst = 0, calcSgst = 0;
                 document.querySelectorAll('.bill-item-row').forEach(row => {
@@ -689,7 +771,6 @@
                 try {
                     const response = await apiRequest(billId ? `/bills/${billId}` : '/bills', billId ? 'PUT' : 'POST', billData);
                     
-                    // Increment the correct counter only on new invoice creation
                     if (!billId && sellerSettings) { 
                         let newSettings = { ...sellerSettings };
                         if (billData.invoice_type === 'PROFORMA_INVOICE') {
@@ -712,7 +793,7 @@
                 } finally { App.hideLoading(); }
             },
             loadBills: async () => { 
-                App.showLoading();
+                App.showLoading("Loading invoices...");
                 try {
                     const response = await apiRequest('/bills');
                     const billsData = response.data || [];
@@ -734,7 +815,7 @@
                 finally { App.hideLoading(); }
             },
             viewBill: async (id, invoiceType) => { 
-                App.showLoading(); 
+                App.showLoading("Loading invoice..."); 
                 try { 
                     const response = await apiRequest(`/bills/${id}?type=${invoiceType}`); 
                     currentPreviewBillData = response.data; 
@@ -743,7 +824,7 @@
                 } finally { App.hideLoading(); } 
             },
             editBill: async (id, invoiceType) => {
-                App.showLoading();
+                App.showLoading("Loading for edit...");
                 try {
                     const response = await apiRequest(`/bills/${id}?type=${invoiceType}`); const bill = response.data;
                     if (bill) {
@@ -767,7 +848,7 @@
             deleteBill: async (id, name, invoiceType) => {
                 const typeName = invoiceType === 'PROFORMA_INVOICE' ? 'Proforma' : 'Bill';
                 App.showConfirmation(`Delete ${typeName}`, `Delete ${typeName} No. "${name}"?`, async () => { 
-                    App.showLoading(); 
+                    App.showLoading("Deleting..."); 
                     try { 
                         await apiRequest(`/bills/${id}?type=${invoiceType}`, 'DELETE'); 
                         App.showMessage(`${typeName} deleted.`); 
@@ -848,7 +929,7 @@
                 `;
             },
             downloadBillAsPdf: async () => { 
-                App.showLoading();
+                App.showLoading("Downloading PDF...");
                 if (!currentPreviewBillData || !currentPreviewBillData.id) { App.showMessage("No invoice selected.", true); App.hideLoading(); return; }
                 const { id, invoice_type, billNumber } = currentPreviewBillData;
                 try {
@@ -879,7 +960,7 @@
                 const typeName = invoice_type === 'PROFORMA_INVOICE' ? 'Proforma Invoice' : 'Invoice';
 
                 App.showConfirmation("Confirm Email", `Send ${typeName} ${billNumber} to ${toEmail}${ccEmail ? ` (CC: ${ccEmail})` : ''}?`, async () => {
-                    App.showLoading();
+                    App.showLoading("Sending email...");
                     try {
                         await apiRequest(`/bills/${id}/send-email`, 'POST', { to: toEmail, cc: ccEmail, subject: `${typeName} ${billNumber} from ${sellerSettings?.name || 'Us'}`, type: invoice_type });
                         App.showMessage("Email sent successfully.");
@@ -893,10 +974,103 @@
             closeDataMgmtModal: () => { document.getElementById('dataMgmtModal').style.display = 'none'; }
         };
 
-        class ToWords { toWords(e){var r=this;let t="";return(t=this.convert(e))?t.replace(/  /g," ").trim().split(" ").map(w=>w[0].toUpperCase() + w.substring(1)).join(' '):"",t}convert(e){var r=this;if(e>999999999)return"overflow";let t=Math.floor(e);if(0===t)return e.toString().indexOf(".")<0?"zero":this.convertDecimals(e);let o=e.toString().indexOf(".");return-1!==o?this.convertNumber(t)+" and "+this.convertDecimals(e):this.convertNumber(t)}convertNumber(e){var r=this;if(e>=1e9)return this.convertNumber(Math.floor(e/1e9))+" billion "+this.convertNumber(e%1e9);if(e>=1e6)return this.convertNumber(Math.floor(e/1e6))+" million "+this.convertNumber(e%1e6);if(e>=1e3)return this.convertNumber(Math.floor(e/1e3))+" thousand "+this.convertNumber(e%1e3);if(e>=100)return this.convertNumber(Math.floor(e/100))+" hundred "+this.convertNumber(e%100);if(e>=20)return this.tens(e)+" "+this.ones(e);if(e>=1)return this.ones(e);return""}ones(e){var r=this;switch(Math.floor(e)){case 1:return"one";case 2:return"two";case 3:return"three";case 4:return"four";case 5:return"five";case 6:return"six";case 7:return"seven";case 8:return"eight";case 9:return"nine";case 10:return"ten";case 11:return"eleven";case 12:return"twelve";case 13:return"thirteen";case 14:return"fourteen";case 15:return"fifteen";case 16:return"sixteen";case 17:return"seventeen";case 18:return"eighteen";case 19:return"nineteen"}return""}tens(e){var r=this;let t=Math.floor(e);if(t>=90)return"ninety";if(t>=80)return"eighty";if(t>=70)return"seventy";if(t>=60)return"sixty";if(t>=50)return"fifty";if(t>=40)return"forty";if(t>=30)return"thirty";if(t>=20)return"twenty"}convertDecimals(e){var r=this;let t=e.toString(),o=t.indexOf(".");if(-1!==o){let a=t.substring(o+1);for(;a.length<2;)a+="0";return this.convertNumber(Number(a))+" paise"}}};
+        class ToWords {
+            toWords(e) {
+                var r = this;
+                let t = "";
+                return (t = this.convert(e)) ? t.replace(/  /g, " ").trim().split(" ").map(w => w[0].toUpperCase() + w.substring(1)).join(' ') : "", t
+            }
+            convert(e) {
+                var r = this;
+                if (e > 999999999) return "overflow";
+                let t = Math.floor(e);
+                if (0 === t) return e.toString().indexOf(".") < 0 ? "zero" : this.convertDecimals(e);
+                let o = e.toString().indexOf(".");
+                return -1 !== o ? this.convertNumber(t) + " and " + this.convertDecimals(e) : this.convertNumber(t)
+            }
+            convertNumber(e) {
+                var r = this;
+                if (e >= 1e9) return this.convertNumber(Math.floor(e / 1e9)) + " billion " + this.convertNumber(e % 1e9);
+                if (e >= 1e6) return this.convertNumber(Math.floor(e / 1e6)) + " million " + this.convertNumber(e % 1e6);
+                if (e >= 1e3) return this.convertNumber(Math.floor(e / 1e3)) + " thousand " + this.convertNumber(e % 1e3);
+                if (e >= 100) return this.convertNumber(Math.floor(e / 100)) + " hundred " + this.convertNumber(e % 100);
+                if (e >= 20) return this.tens(e) + " " + this.ones(e);
+                if (e >= 1) return this.ones(e);
+                return ""
+            }
+            ones(e) {
+                var r = this;
+                switch (Math.floor(e)) {
+                    case 1:
+                        return "one";
+                    case 2:
+                        return "two";
+                    case 3:
+                        return "three";
+                    case 4:
+                        return "four";
+                    case 5:
+                        return "five";
+                    case 6:
+                        return "six";
+                    case 7:
+                        return "seven";
+                    case 8:
+                        return "eight";
+                    case 9:
+                        return "nine";
+                    case 10:
+                        return "ten";
+                    case 11:
+                        return "eleven";
+                    case 12:
+                        return "twelve";
+                    case 13:
+                        return "thirteen";
+                    case 14:
+                        return "fourteen";
+                    case 15:
+                        return "fifteen";
+                    case 16:
+                        return "sixteen";
+                    case 17:
+                        return "seventeen";
+                    case 18:
+                        return "eighteen";
+                    case 19:
+                        return "nineteen"
+                }
+                return ""
+            }
+            tens(e) {
+                var r = this;
+                let t = Math.floor(e);
+                if (t >= 90) return "ninety";
+                if (t >= 80) return "eighty";
+                if (t >= 70) return "seventy";
+                if (t >= 60) return "sixty";
+                if (t >= 50) return "fifty";
+                if (t >= 40) return "forty";
+                if (t >= 30) return "thirty";
+                if (t >= 20) return "twenty"
+            }
+            convertDecimals(e) {
+                var r = this;
+                let t = e.toString(),
+                    o = t.indexOf(".");
+                if (-1 !== o) {
+                    let a = t.substring(o + 1);
+                    for (; a.length < 2;) a += "0";
+                    return this.convertNumber(Number(a)) + " paise"
+                }
+            }
+        };
 
-        if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', App.init); }
-        else { App.init(); }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', App.init);
+        } else {
+            App.init();
+        }
         window.App = App;
     </script>
 </body>
