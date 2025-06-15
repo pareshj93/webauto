@@ -282,6 +282,7 @@ const PDF_SETTINGS = {
 function drawPdfContent(doc, billDetails, logoBuffer) {
     try {
         const context = { y: doc.page.margins.top };
+        const itemCount = (billDetails.items || []).length;
 
         doc.on('pageAdded', () => { 
             context.y = doc.page.margins.top;
