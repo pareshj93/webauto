@@ -41,7 +41,6 @@ async function initializeDatabasePool() {
 }
 
 // --- Middleware & Utilities ---
-// *** FIX: Enabled CORS for all origins to resolve deployment issues ***
 app.use(cors());
 app.use(express.json());
 const sendResponse = (res, statusCode, data, message, meta) => res.status(statusCode).json({ success: statusCode < 400, data, message, meta });
@@ -279,7 +278,75 @@ const PDF_SETTINGS = {
     LOGO: { MAX_WIDTH: 180, MAX_HEIGHT: 100 } 
 };
 
-async function generateBillPdfBuffer(billDetails, logoBuffer) {
+// *** NEW: SHARED FUNCTION TO DRAW PDF CONTENT ***
+function drawPdfContent(doc, billDetails, logoBuffer) {
+    const context = { y: doc.page.margins.top };
+    const itemCount = (billDetails.items || []).length;
+
+    doc.on('pageAdded', () => { 
+        context.y = doc.page.margins.top;
+        doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM)
+            .text(`Invoice Continued: ${billDetails.billNumber}`, doc.page.margins.left, doc.page.margins.top - 20, { 
+                width: doc.page.width - doc.page.margins.left - doc.page.margins.right, 
+                align: 'center' 
+            });
+    });
+    
+    drawHeader(doc, context, billDetails, logoBuffer, true);
+    drawBillPartyAndMetaInfo(doc, context, billDetails);
+    
+    const title = (billDetails.invoice_type === 'PROFORMA_INVOICE') ? 'PROFORMA INVOICE' : 'TAX INVOICE';
+    doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(14).fillColor(PDF_SETTINGS.COLOR.INVOICE_TITLE)
+       .text(title, PDF_SETTINGS.MARGIN.LEFT, context.y, { 
+           width: doc.page.width - PDF_SETTINGS.MARGIN.LEFT - PDF_SETTINGS.MARGIN.RIGHT, 
+           align: 'center' 
+       });
+    context.y = doc.y + 15;
+    
+    let layoutOptions = { fontSize: 9, rowPadding: 5 };
+    if (itemCount <= 10) {
+         layoutOptions = { fontSize: 7.8, rowPadding: 3 };
+    }
+
+    const itemTableConfig = getItemTableConfig(doc, billDetails, layoutOptions);
+    drawItemTable(doc, context, itemTableConfig, layoutOptions);
+
+    const hsnConfig = getHsnSummaryConfig(doc, billDetails, itemTableConfig.tableWidth, layoutOptions);
+    
+    if (itemCount <= 10) {
+        drawTotalsSection(doc, context, billDetails, layoutOptions);
+        if (hsnConfig) {
+            drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+        }
+    } else if (itemCount <= 14) {
+        drawTotalsSection(doc, context, billDetails, layoutOptions);
+        if (hsnConfig) {
+            doc.addPage();
+            drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+        }
+    } else {
+        const totalsHeight = 140; 
+        const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig, layoutOptions) : 0;
+        
+        if (checkAndHandlePageBreak(doc, context, totalsHeight + hsnHeight)) {
+            drawTotalsSection(doc, context, billDetails, layoutOptions);
+             if (hsnConfig) {
+                checkAndHandlePageBreak(doc, context, hsnHeight);
+                drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+             }
+        } else {
+            drawTotalsSection(doc, context, billDetails, layoutOptions);
+            if (hsnConfig) {
+                drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+            }
+        }
+    }
+    
+    finalizePages(doc, billDetails);
+}
+
+// *** NEW: FUNCTION TO GENERATE PDF AND RETURN A BUFFER (FOR EMAILS) ***
+function generateBillPdfBuffer(billDetails, logoBuffer) {
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({ size: 'A4', margins: PDF_SETTINGS.MARGIN, bufferPages: true });
         const buffers = [];
@@ -287,74 +354,26 @@ async function generateBillPdfBuffer(billDetails, logoBuffer) {
         doc.on('end', () => resolve(Buffer.concat(buffers)));
         doc.on('error', reject);
 
-        try {
-            const context = { y: doc.page.margins.top };
-            const itemCount = (billDetails.items || []).length;
-
-            doc.on('pageAdded', () => { 
-                context.y = doc.page.margins.top;
-                doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(9).fillColor(PDF_SETTINGS.COLOR.TEXT_MEDIUM)
-                    .text(`Invoice Continued: ${billDetails.billNumber}`, doc.page.margins.left, doc.page.margins.top - 20, { 
-                        width: doc.page.width - doc.page.margins.left - doc.page.margins.right, 
-                        align: 'center' 
-                    });
-            });
-            
-            drawHeader(doc, context, billDetails, logoBuffer, true);
-            drawBillPartyAndMetaInfo(doc, context, billDetails);
-            
-            const title = (billDetails.invoice_type === 'PROFORMA_INVOICE') ? 'PROFORMA INVOICE' : 'TAX INVOICE';
-            doc.font(PDF_SETTINGS.FONT.BOLD).fontSize(14).fillColor(PDF_SETTINGS.COLOR.INVOICE_TITLE)
-               .text(title, PDF_SETTINGS.MARGIN.LEFT, context.y, { 
-                   width: doc.page.width - PDF_SETTINGS.MARGIN.LEFT - PDF_SETTINGS.MARGIN.RIGHT, 
-                   align: 'center' 
-               });
-            context.y = doc.y + 15;
-            
-            let layoutOptions = { fontSize: 9, rowPadding: 5 };
-            if (itemCount <= 10) {
-                 layoutOptions = { fontSize: 7.8, rowPadding: 3 };
-            }
-
-            const itemTableConfig = getItemTableConfig(doc, billDetails, layoutOptions);
-            drawItemTable(doc, context, itemTableConfig, layoutOptions);
-
-            const hsnConfig = getHsnSummaryConfig(doc, billDetails, itemTableConfig.tableWidth, layoutOptions);
-            
-            if (itemCount <= 10) {
-                drawTotalsSection(doc, context, billDetails, layoutOptions);
-                if (hsnConfig) {
-                    drawHsnSummary(doc, context, hsnConfig, layoutOptions);
-                }
-            } else if (itemCount <= 14) {
-                drawTotalsSection(doc, context, billDetails, layoutOptions);
-                if (hsnConfig) {
-                    doc.addPage();
-                    drawHsnSummary(doc, context, hsnConfig, layoutOptions);
-                }
-            } else {
-                const totalsHeight = 140; 
-                const hsnHeight = hsnConfig ? getTableHeight(doc, hsnConfig, layoutOptions) : 0;
-                
-                if (checkAndHandlePageBreak(doc, context, totalsHeight + hsnHeight)) {
-                    drawTotalsSection(doc, context, billDetails, layoutOptions);
-                     if (hsnConfig) {
-                        checkAndHandlePageBreak(doc, context, hsnHeight);
-                        drawHsnSummary(doc, context, hsnConfig, layoutOptions);
-                     }
-                } else {
-                    drawTotalsSection(doc, context, billDetails, layoutOptions);
-                    if (hsnConfig) {
-                        drawHsnSummary(doc, context, hsnConfig, layoutOptions);
-                    }
-                }
-            }
-            
-            finalizePages(doc, billDetails);
-            doc.end();
-        } catch (e) { console.error("[PDF Generation Error]", e.stack); reject(e); }
+        drawPdfContent(doc, billDetails, logoBuffer);
+        
+        doc.end();
     });
 }
+
+// *** NEW: FUNCTION TO GENERATE PDF AND STREAM TO RESPONSE (FOR DOWNLOADS) ***
+function streamBillPdf(res, billDetails, logoBuffer) {
+    const doc = new PDFDocument({ size: 'A4', margins: PDF_SETTINGS.MARGIN });
+    
+    // Pipe the PDF directly to the response object
+    doc.pipe(res);
+    
+    // Draw the content
+    drawPdfContent(doc, billDetails, logoBuffer);
+
+    // Finalize the PDF and end the stream
+    doc.end();
+}
+
 
 function drawHeader(doc, context, billDetails, logoBuffer, isFirstPage) {
     const { sellerDetails } = billDetails;
@@ -472,13 +491,13 @@ function drawBillPartyAndMetaInfo(doc, context, billDetails) {
 }
 
 
+// <<< UPDATED DOWNLOAD ENDPOINT TO STREAM PDF >>>
 app.get('/api/bills/:id/download-pdf', async (req, res) => {
     try {
         const { type } = req.query;
         const billId = req.params.id;
         if (!type) return sendResponse(res, 400, null, 'Invoice type query parameter is required.');
 
-        console.log(`--- API HIT: PDF Download for ${type} ID: ${billId} ---`);
         const isProforma = type === 'PROFORMA_INVOICE';
         const tableName = isProforma ? 'proforma_invoices' : 'bills';
         const itemsTableName = isProforma ? 'proforma_invoice_items' : 'bill_items';
@@ -499,18 +518,20 @@ app.get('/api/bills/:id/download-pdf', async (req, res) => {
         const logoUrl = billData.sellerDetails.companyLogoUrl || "https://jetsetbranding.com/Webauto.jpg";
         const logoBuffer = await getLogoBuffer(logoUrl);
 
-        const pdfBuffer = await generateBillPdfBuffer(billData, logoBuffer);
-
         res.setHeader('Content-Type', 'application/pdf');
         const sanitizedBillNumber = String(billData.billNumber || billId).replace(/[^a-z0-9_.-]/gi, '_');
         res.setHeader('Content-Disposition', `attachment; filename="${type}-${sanitizedBillNumber}.pdf"`);
-        res.send(pdfBuffer);
+        
+        // Stream the PDF directly to the response
+        streamBillPdf(res, billData, logoBuffer);
+
     } catch (error) {
         console.error(`--- ERROR generating PDF for download for bill ${req.params.id} ---:`, error.stack);
         res.status(500).type('text/plain').send(`Failed to generate PDF. Error: ${error.message}`);
     }
 });
 
+// <<< EMAIL ENDPOINT STILL USES BUFFERING (REQUIRED) >>>
 app.post('/api/bills/:id/send-email', async (req, res) => {
     try {
         const { to, cc, subject, type } = req.body;
