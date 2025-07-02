@@ -9,6 +9,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Supabase Client Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         body { font-family: 'Inter', sans-serif; overscroll-behavior-y: contain; }
@@ -47,80 +49,37 @@
         .close-button:hover, .close-button:focus { color: black; text-decoration: none; }
         .pagination-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* --- New Skeleton Loader Styles --- */
         #skeletonLoader {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(255, 255, 255, 0.9);
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            backdrop-filter: blur(4px);
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(255, 255, 255, 0.9); z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 20px; backdrop-filter: blur(4px);
         }
-        .skeleton-preview {
-            width: 80%;
-            max-width: 400px;
-            background: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-        }
-        .skeleton-line {
-            height: 12px;
-            margin-bottom: 8px;
-            border-radius: 4px;
-            background-color: #e0e0e0;
-        }
-        .skeleton-line.short { width: 60%; }
-        .skeleton-line.long { width: 90%; }
+        .skeleton-preview { width: 80%; max-width: 400px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .skeleton-line { height: 12px; margin-bottom: 8px; border-radius: 4px; background-color: #e0e0e0; }
+        .skeleton-line.short { width: 60%; } .skeleton-line.long { width: 90%; }
         .skeleton-title { height: 20px; width: 50%; margin: 10px auto; }
         .skeleton-table-header { height: 16px; width: 100%; margin-bottom: 10px; }
-        .shimmer {
-            position: relative;
-            overflow: hidden;
-        }
-        .shimmer::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
-            animation: shimmer 1.5s infinite;
-        }
-        @keyframes shimmer {
-            100% {
-                left: 100%;
-            }
-        }
-        .loading-text {
-            margin-top: 20px;
-            font-size: 1rem;
-            font-weight: 500;
-            color: #4A5568;
-        }
+        .shimmer { position: relative; overflow: hidden; }
+        .shimmer::after { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent); animation: shimmer 1.5s infinite; }
+        @keyframes shimmer { 100% { left: 100%; } }
+        .loading-text { margin-top: 20px; font-size: 1rem; font-weight: 500; color: #4A5568; }
 
+        #hsnFinderView { position: relative; }
+        #hsnFinderView::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+            background-size: 16px 16px; opacity: 0.5; z-index: -1;
+        }
+        
         @media print {
             body, html { margin: 0; padding: 0; background-color: #fff; }
             .no-print { display: none !important; }
             body > *:not(#appContainer) { display: none !important; }
             #appContainer { all: initial !important; }
             main, #viewBillView, #billPreviewAreaContainer, #billPreviewArea { all: initial !important; display: block !important; }
-             #billPreviewAreaContainer * {
-                visibility: visible !important;
-            }
-             #billPreviewArea {
-                font-family: 'Arial', 'Helvetica', sans-serif !important; 
-                font-size: 8px !important; 
-                color: #000 !important;
-            }
+             #billPreviewAreaContainer * { visibility: visible !important; }
+             #billPreviewArea { font-family: 'Arial', 'Helvetica', sans-serif !important; font-size: 8px !important; color: #000 !important; }
         }
     </style>
 </head>
@@ -156,15 +115,12 @@
             <button id="logoutButton" class="text-white hover:text-gray-200"><i class="fas fa-sign-out-alt mr-1"></i> Logout</button>
         </header>
 
-        <!-- New Skeleton Loader -->
         <div id="skeletonLoader" class="hidden no-print">
             <div class="skeleton-preview">
                 <div class="shimmer skeleton-line" style="width: 70%; height: 24px; margin-bottom: 20px;"></div>
                 <div class="shimmer skeleton-line" style="width: 50%;"></div>
                 <div class="shimmer skeleton-line" style="width: 80%; margin-bottom: 20px;"></div>
-                
                 <div class="shimmer skeleton-title"></div>
-                
                 <div class="shimmer skeleton-table-header"></div>
                 <div class="shimmer skeleton-line"></div>
                 <div class="shimmer skeleton-line"></div>
@@ -182,9 +138,31 @@
         <main class="p-4">
             <div id="dashboardView" class="view active">
                 <h2 class="text-lg font-semibold mb-4">Dashboard</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <button onclick="App.navigateTo('createBillView')" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-md flex items-center justify-center text-lg transition-transform transform hover:scale-105"><i class="fas fa-file-invoice mr-2"></i> Create New Bill</button>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                    <button onclick="App.navigateTo('createBillView')" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-md flex items-center justify-center text-lg transition-transform transform hover:scale-105"><i class="fas fa-file-invoice mr-2"></i> New Bill</button>
                     <button onclick="App.navigateTo('billsListView')" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-md flex items-center justify-center text-lg transition-transform transform hover:scale-105"><i class="fas fa-list-alt mr-2"></i> View Bills</button>
+                    <button onclick="App.navigateTo('hsnFinderView')" class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 px-4 rounded-lg shadow-md flex items-center justify-center text-lg transition-transform transform hover:scale-105"><i class="fas fa-search mr-2"></i> HSN Finder</button>
+                </div>
+
+                <div class="bg-indigo-50 border-2 border-indigo-200 p-6 rounded-xl shadow-sm">
+                    <h3 class="text-lg font-semibold text-indigo-800 mb-3">Subscription Details</h3>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Current Plan:</span>
+                            <span class="font-bold text-indigo-700 bg-indigo-100 px-2 py-1 rounded-full">Jetset Smart Billing</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Amount:</span>
+                            <span class="font-semibold text-gray-800">₹2499 / Year</span>
+                        </div>
+                        <hr class="my-3 border-indigo-200">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Expires On:</span>
+                            <span class="font-semibold text-red-600">01/06/2026</span>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-4">You will be notified before your plan expires. Thank you for your business!</p>
+                    <p class="text-center text-xs text-gray-400 mt-6">Developed by <a href="#" class="font-semibold text-indigo-500 hover:underline">jetsetbranding</a></p>
                 </div>
             </div>
 
@@ -322,6 +300,28 @@
                 </div>
                 <div id="billPreviewAreaContainer" class="overflow-x-auto"><div id="billPreviewArea" class="bill-preview-area"></div></div>
             </div>
+            
+            <div id="hsnFinderView" class="view">
+                 <div class="w-full max-w-2xl mx-auto">
+                    <header class="text-center mb-8">
+                        <h1 class="text-3xl md:text-4xl font-bold text-slate-900">HSN Finder Pro</h1>
+                        <p class="text-slate-500 mt-2">Instant HSN code search engine.</p>
+                    </header>
+                    <div class="relative mb-6">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <svg class="h-5 w-5 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd" /></svg>
+                        </div>
+                        <input type="text" id="hsn-search-input" placeholder="Search by HSN code or product description..." class="w-full pl-12 pr-4 py-3 bg-white border border-slate-300 rounded-full shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all">
+                    </div>
+                    <main id="hsn-results-container" class="bg-white/50 backdrop-blur-sm p-4 rounded-xl shadow-md border border-slate-200 min-h-[200px]">
+                        <div id="hsn-status" class="flex items-center justify-center h-full text-slate-500">
+                            <p>Start typing to find HSN codes.</p>
+                        </div>
+                        <div id="hsn-results" class="space-y-3"></div>
+                    </main>
+                </div>
+            </div>
+
         </main>
 
         <nav class="bottom-nav bg-gray-800 text-white p-2 shadow-t-lg no-print">
@@ -334,7 +334,19 @@
         </nav>
     </div>
 
-    <div id="dataMgmtModal" class="modal no-print"><div class="modal-content"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Manage Data</h3><span class="close-button" onclick="App.closeDataMgmtModal()">&times;</span></div><div class="space-y-3"><button onclick="App.navigateTo('partiesView'); App.closeDataMgmtModal();" class="w-full bg-purple-500 text-white font-bold py-2.5 px-4 rounded-md shadow">Manage Parties</button><button onclick="App.navigateTo('productsView'); App.closeDataMgmtModal();" class="w-full bg-orange-500 text-white font-bold py-2.5 px-4 rounded-md shadow">Manage Products</button></div></div></div>
+    <div id="dataMgmtModal" class="modal no-print">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">Manage Data</h3>
+                <span class="close-button" onclick="App.closeDataMgmtModal()">&times;</span>
+            </div>
+            <div class="space-y-3">
+                <button onclick="App.navigateTo('partiesView'); App.closeDataMgmtModal();" class="w-full bg-purple-500 text-white font-bold py-2.5 px-4 rounded-md shadow">Manage Parties</button>
+                <button onclick="App.navigateTo('productsView'); App.closeDataMgmtModal();" class="w-full bg-orange-500 text-white font-bold py-2.5 px-4 rounded-md shadow">Manage Products</button>
+                <button onclick="App.navigateTo('hsnFinderView'); App.closeDataMgmtModal();" class="w-full bg-sky-500 text-white font-bold py-2.5 px-4 rounded-md shadow">HSN Finder</button>
+            </div>
+        </div>
+    </div>
     <div id="addProductFromSavedModal" class="modal no-print"><div class="modal-content"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Select Product</h3><span class="close-button" onclick="App.closeAddProductFromSavedModal()">&times;</span></div><div class="mb-3"><input type="search" id="modalProductSearchInput" placeholder="Search saved products..." class="w-full p-2 border"></div><div id="savedProductsSelectionList" class="max-h-60 overflow-y-auto border p-2"></div><div id="modalProductPaginationControls" class="mt-3 flex justify-between items-center"></div><button onclick="App.closeAddProductFromSavedModal()" class="mt-4 bg-gray-500 text-white font-bold py-2 px-4 rounded-md w-full shadow">Close</button></div></div>
 
     <script type="module">
@@ -382,6 +394,80 @@
                 throw error;
             }
         }
+        
+        const HSN_FINDER = {
+            isInitialized: false,
+            supabaseClient: null,
+            debounceTimer: null,
+            
+            init: function() {
+                if (this.isInitialized) return;
+
+                const SUPABASE_URL = 'https://aovkufadloskexjfltzu.supabase.co';
+                const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFvdmt1ZmFkbG9za2V4amZsdHp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE0Nzk3NzUsImV4cCI6MjA2NzA1NTc3NX0.7_8EIlJwhT0AsQOoSSPrLoRoCmkYATmyQthyCFOcfo8';
+                
+                this.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+                const searchInput = document.getElementById('hsn-search-input');
+                searchInput.addEventListener('keyup', () => {
+                    this.debounce(this.performSearch, 300);
+                });
+                
+                this.isInitialized = true;
+                console.log("HSN Finder Initialized.");
+            },
+
+            debounce: function(func, delay) {
+                clearTimeout(this.debounceTimer);
+                this.debounceTimer = setTimeout(func.bind(this), delay);
+            },
+
+            performSearch: async function() {
+                const searchInput = document.getElementById('hsn-search-input');
+                const resultsDiv = document.getElementById('hsn-results');
+                const statusDiv = document.getElementById('hsn-status');
+                const query = searchInput.value.trim();
+
+                if (!query) {
+                    resultsDiv.innerHTML = '';
+                    statusDiv.innerHTML = '<p>Start typing to find HSN codes.</p>';
+                    statusDiv.style.display = 'flex';
+                    return;
+                }
+
+                statusDiv.innerHTML = `<div class="flex items-center space-x-2"><svg class="animate-spin h-5 w-5 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Searching...</span></div>`;
+                statusDiv.style.display = 'flex';
+                resultsDiv.innerHTML = '';
+
+                const { data, error } = await this.supabaseClient.rpc('search_hsn', {
+                    search_term: query
+                });
+
+                if (error) {
+                    statusDiv.innerHTML = '<p class="text-red-500">An error occurred during search.</p>';
+                    console.error('HSN Search Error:', error);
+                    return;
+                }
+
+                statusDiv.style.display = 'none';
+
+                if (data && data.length > 0) {
+                    data.forEach(item => {
+                        const resultCard = document.createElement('div');
+                        resultCard.className = 'p-4 bg-white rounded-lg border border-slate-200 hover:shadow-lg hover:border-indigo-500 transition-all duration-300';
+                        resultCard.innerHTML = `
+                            <p class="text-sm text-slate-500">HSN Code</p>
+                            <h3 class="text-xl font-semibold text-indigo-600">${item.hsn_code}</h3>
+                            <p class="mt-2 text-slate-700">${item.hsn_description}</p>
+                        `;
+                        resultsDiv.appendChild(resultCard);
+                    });
+                } else {
+                    statusDiv.innerHTML = `<p>No results found for "${query}".</p>`;
+                    statusDiv.style.display = 'flex';
+                }
+            }
+        };
 
         const App = {
             init: () => {
@@ -442,13 +528,17 @@
                 currentView = viewId;
                 let viewTitleText = title || document.querySelector(`#${viewId} h2`)?.textContent.trim() || document.querySelector(`.bottom-nav button[onclick*="${viewId}"] span`)?.textContent.trim() || "Bill Generator";
                 document.getElementById('viewTitle').textContent = viewTitleText;
+                
+                if (viewId === 'hsnFinderView') {
+                    HSN_FINDER.init();
+                }
+                
                 if (viewId === 'createBillView' && !document.getElementById('billId').value) App.prepareNewBillForm();
                 if (viewId === 'partiesView') App.loadParties(true); 
                 if (viewId === 'productsView') App.loadProducts(currentProductPage, document.getElementById('productSearchInput').value || '', true); 
                 if (viewId === 'billsListView') App.loadBills();
                 window.scrollTo(0, 0);
             },
-            // Updated showLoading to use the skeleton loader
             showLoading: (text = "Generating Your Document...") => {
                 document.querySelector('#skeletonLoader .loading-text').textContent = text;
                 document.getElementById('skeletonLoader').style.display = 'flex';
@@ -781,7 +871,7 @@
                         try { 
                            await apiRequest('/settings', 'POST', newSettings);
                            sellerSettings = newSettings;
-                        } catch (settingsError) { console.warn("Could not update next bill number in settings:", settingsError); }
+                        } catch (settingsError) { cAonsole.warn("Could not update next bill number in settings:", settingsError); }
                     }
                     App.showMessage(billId ? "Invoice updated." : "Invoice saved.");
                     currentPreviewBillData = { ...billData, id: response.data?.id || billId };
@@ -1001,63 +1091,27 @@
             ones(e) {
                 var r = this;
                 switch (Math.floor(e)) {
-                    case 1:
-                        return "one";
-                    case 2:
-                        return "two";
-                    case 3:
-                        return "three";
-                    case 4:
-                        return "four";
-                    case 5:
-                        return "five";
-                    case 6:
-                        return "six";
-                    case 7:
-                        return "seven";
-                    case 8:
-                        return "eight";
-                    case 9:
-                        return "nine";
-                    case 10:
-                        return "ten";
-                    case 11:
-                        return "eleven";
-                    case 12:
-                        return "twelve";
-                    case 13:
-                        return "thirteen";
-                    case 14:
-                        return "fourteen";
-                    case 15:
-                        return "fifteen";
-                    case 16:
-                        return "sixteen";
-                    case 17:
-                        return "seventeen";
-                    case 18:
-                        return "eighteen";
-                    case 19:
-                        return "nineteen"
+                    case 1: return "one"; case 2: return "two"; case 3: return "three";
+                    case 4: return "four"; case 5: return "five"; case 6: return "six";
+                    case 7: return "seven"; case 8: return "eight"; case 9: return "nine";
+                    case 10: return "ten"; case 11: return "eleven"; case 12: return "twelve";
+                    case 13: return "thirteen"; case 14: return "fourteen"; case 15: return "fifteen";
+                    case 16: return "sixteen"; case 17: return "seventeen"; case 18: return "eighteen";
+                    case 19: return "nineteen";
                 }
                 return ""
             }
             tens(e) {
                 var r = this;
                 let t = Math.floor(e);
-                if (t >= 90) return "ninety";
-                if (t >= 80) return "eighty";
-                if (t >= 70) return "seventy";
-                if (t >= 60) return "sixty";
-                if (t >= 50) return "fifty";
-                if (t >= 40) return "forty";
-                if (t >= 30) return "thirty";
-                if (t >= 20) return "twenty"
+                if (t >= 90) return "ninety"; if (t >= 80) return "eighty";
+                if (t >= 70) return "seventy"; if (t >= 60) return "sixty";
+                if (t >= 50) return "fifty"; if (t >= 40) return "forty";
+                if (t >= 30) return "thirty"; if (t >= 20) return "twenty";
             }
             convertDecimals(e) {
                 var r = this;
-                let t = e.toString(),
-                    o = t.indexOf(".");
+                let t = e.toString(), o = t.indexOf(".");
                 if (-1 !== o) {
                     let a = t.substring(o + 1);
                     for (; a.length < 2;) a += "0";
