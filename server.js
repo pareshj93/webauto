@@ -342,8 +342,8 @@ async function generateBillPdfBuffer(billDetails, logoBuffer) {
                 if (checkAndHandlePageBreak(doc, context, totalsHeight + hsnHeight)) {
                     drawTotalsSection(doc, context, billDetails, layoutOptions);
                      if (hsnConfig) {
-                        checkAndHandlePageBreak(doc, context, hsnHeight);
-                        drawHsnSummary(doc, context, hsnConfig, layoutOptions);
+                         checkAndHandlePageBreak(doc, context, hsnHeight);
+                         drawHsnSummary(doc, context, hsnConfig, layoutOptions);
                      }
                 } else {
                     drawTotalsSection(doc, context, billDetails, layoutOptions);
@@ -387,12 +387,12 @@ function drawHeader(doc, context, billDetails, logoBuffer, isFirstPage) {
 
         if (textBlockMaxWidth > 0) {
             doc.font(FONT.BOLD).fontSize(18).fillColor(COLOR.TEXT_DARK)
-                .text(sellerDetails.name || "", companyDetailsX, headerStartY, { width: textBlockMaxWidth });
+               .text(sellerDetails.name || "", companyDetailsX, headerStartY, { width: textBlockMaxWidth });
 
             doc.moveDown(0.5);
 
             doc.font(FONT.NORMAL).fontSize(9).fillColor(COLOR.TEXT_LIGHT)
-                .text(sellerDetails.address || "", { width: textBlockMaxWidth });
+               .text(sellerDetails.address || "", { width: textBlockMaxWidth });
             
             if (sellerDetails.gstin) {
                  doc.moveDown(0.5);
@@ -954,24 +954,42 @@ async function getLogoBuffer(url) {
 // --- Server Startup ---
 async function startServer() {
     console.log(">>> startServer: Function started.");
-    if (!await initializeDatabasePool()) {
-        console.error(">>> startServer: FATAL - DB pool failed to initialize. Server cannot start.");
-        process.exit(1);
-    }
-    const server = app.listen(port, () => console.log(`Backend server running at http://localhost:${port}`));
+    
+    // Attempt to initialize the database, but don't exit on failure.
+    // The middleware will handle requests if the pool is not available.
+    await initializeDatabasePool(); 
+
+    const server = app.listen(port, '0.0.0.0', () => {
+        console.log(`✅ Backend server is running and listening on port ${port}`);
+        if (!pool) {
+            console.warn("!!! WARNING: Server started WITHOUT a database connection. API endpoints will be unavailable. !!!");
+        }
+    });
+
     server.on('error', (error) => {
         if (error.syscall !== 'listen') throw error;
         const bind = `Port ${port}`;
         switch (error.code) {
-            case 'EACCES': console.error(`${bind} requires elevated privileges.`); process.exit(1); break;
-            case 'EADDRINUSE': console.error(`${bind} is already in use.`); process.exit(1); break;
-            default: throw error;
+            case 'EACCES': 
+                console.error(`${bind} requires elevated privileges.`); 
+                process.exit(1); 
+                break;
+            case 'EADDRINUSE': 
+                console.error(`${bind} is already in use.`); 
+                process.exit(1); 
+                break;
+            default: 
+                throw error;
         }
     });
+
     process.on('SIGINT', async () => {
         console.log('>>> SIGINT: Closing server...');
         server.close(async () => {
-            if (pool) { await pool.end(); console.log('>>> SIGINT: Database pool closed.'); }
+            if (pool) { 
+                await pool.end(); 
+                console.log('>>> SIGINT: Database pool closed.'); 
+            }
             console.log('>>> SIGINT: Server closed.');
             process.exit(0);
         });
